@@ -720,7 +720,7 @@ def main():
         type=str,
         nargs='+',
         required=True,
-        help='Name(s) of the application(s) to build AppImage(s) for.'
+        help='Name(s) of the application(s) for which to build AppImage(s).'
     )
 
     parser.add_argument(
