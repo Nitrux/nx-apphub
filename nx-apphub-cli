@@ -1,0 +1,801 @@
+#!/usr/bin/env python3
+
+#############################################################################################################################################################################
+#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
+#                                                                                                                                                                           #
+#   Copyright <2024> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
+#                                                                                                                                                                           #
+#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
+#                                                                                                                                                                           #
+#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
+#                                                                                                                                                                           #
+#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
+#       in the documentation and/or other materials provided with the distribution.                                                                                         #
+#                                                                                                                                                                           #
+#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
+#       without specific prior written permission.                                                                                                                          #
+#                                                                                                                                                                           #
+#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
+#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
+#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
+#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
+#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
+#############################################################################################################################################################################
+
+import os
+import subprocess
+import sys
+import shutil
+import random
+import string
+import argparse
+import logging
+import yaml
+import difflib
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+######################
+# General functions. #
+######################
+
+class CustomArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        message = message.replace("APP", "«APP»").replace("--repo", "«REPO»")
+        sys.stderr.write(f"error: {message}\n\n")
+        sys.stderr.write("See «nx-apphub-cli -h» for help.\n")
+        sys.exit(2)
+
+    def format_help(self):
+        help_text = super().format_help()
+        help_text = help_text.replace('usage:', 'Usage:')
+        help_text = help_text.replace('positional arguments:', 'Arguments:')
+        help_text = help_text.replace('options:', 'Options:')
+        help_text = help_text.replace('show', 'Show')
+        return help_text
+
+
+class ColoredFormatter(logging.Formatter):
+    COLOR_CODES = {
+        'DEBUG': '\033[94m',     # Blue
+        'INFO': '\033[92m',      # Green
+        'WARNING': '\033[93m',   # Yellow
+        'ERROR': '\033[91m',     # Red
+        'CRITICAL': '\033[95m',  # Magenta
+    }
+    RESET_CODE = '\033[0m'
+
+    def format(self, record):
+        color = self.COLOR_CODES.get(record.levelname, self.RESET_CODE)
+        message = super().format(record)
+        return f"{color}{message}{self.RESET_CODE}"
+
+
+def setup_logging(log_level):
+    numeric_level = getattr(logging, log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        print(f"Invalid log level: {log_level}")
+        sys.exit(1)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(numeric_level)
+    formatter = ColoredFormatter(
+        '%(asctime)s [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    handler.setFormatter(formatter)
+
+    logging.basicConfig(
+        level=numeric_level,
+        handlers=[handler]
+    )
+
+
+########################
+# Distrobox functions. #
+########################
+
+def check_distrobox_installed():
+    try:
+        run_distrobox_command(['distrobox', '--version'])
+        logging.debug("Distrobox is installed.")
+    except subprocess.CalledProcessError:
+        logging.error("Error: 'distrobox' is not installed or not found in the host's $PATH.")
+        sys.exit(1)
+
+
+def run_distrobox_command(cmd):
+    """
+    If log level is DEBUG, captures and logs the output.
+    Otherwise, captures stdout and stderr for error handling without displaying them.
+    Returns subprocess.CompletedProcess.
+    """
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            if result.stdout:
+                logging.debug(f"Standard Output Stream:\n{result.stdout}")
+            if result.stderr:
+                logging.debug(f"Standard Error Stream:\n{result.stderr}")
+        return result
+    except subprocess.CalledProcessError as e:
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            if e.stdout:
+                logging.debug(f"Standard Output Stream:\n{e.stdout}")
+            if e.stderr:
+                logging.debug(f"Standard Error Stream:\n{e.stderr}")
+        logging.error(f"Command '{' '.join(cmd)}' failed with return code {e.returncode}")
+        raise e
+
+
+def generate_random_id(length=6):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+
+
+def stop_and_remove_container(container_name, staging_dir=None):
+    logging.info(f"Cleaning up container: {container_name}...")
+    try:
+        result = run_distrobox_command(['distrobox', 'list'])
+        lines = result.stdout.splitlines()
+
+        for line in lines:
+            if container_name in line:
+                container_id = line.split()[0]
+                run_distrobox_command(['podman', 'container', 'kill', container_id])
+                run_distrobox_command(['podman', 'container', 'rm', '-f', container_id])
+                logging.info(f"Container '{container_name}' stopped and removed.")
+                break
+        else:
+            logging.warning(f"Container '{container_name}' not found.")
+
+        desktop_launcher = os.path.expanduser(f"~/.local/share/applications/{container_name}.desktop")
+        if os.path.exists(desktop_launcher):
+            try:
+                os.remove(desktop_launcher)
+                logging.info(f"Cleanup leftover launcher '{desktop_launcher}' deleted.")
+            except OSError as e:
+                logging.error(f"Failed to delete leftover launcher '{desktop_launcher}': {e}")
+        else:
+            logging.warning(f"Desktop launcher '{desktop_launcher}' not found.")
+
+        if staging_dir and os.path.exists(staging_dir):
+            try:
+                shutil.rmtree(staging_dir)
+                logging.info(f"Staging area '{staging_dir}' deleted.")
+            except Exception as e:
+                logging.critical(f"Error deleting staging area: {e}")
+
+    except subprocess.CalledProcessError:
+        logging.error(f"Error stopping and removing the container '{container_name}'.")
+        desktop_launcher = os.path.expanduser(f"~/.local/share/applications/{container_name}.desktop")
+        if os.path.exists(desktop_launcher):
+            try:
+                os.remove(desktop_launcher)
+                logging.info(f"Cleanup leftover launcher'{desktop_launcher}' deleted.")
+            except OSError as e:
+                logging.error(f"Failed to delete leftover launcher '{desktop_launcher}': {e}")
+        else:
+            logging.warning(f"Desktop launcher '{desktop_launcher}' not found.")
+
+        if staging_dir and os.path.exists(staging_dir):
+            try:
+                shutil.rmtree(staging_dir)
+                logging.info(f"Staging area '{staging_dir}' deleted.")
+            except Exception as e:
+                logging.critical(f"Error deleting staging area: {e}")
+        sys.exit(1)
+
+
+#############################################################
+# Step 1: Create a Distrobox container with a dynamic name. #
+#############################################################
+
+def create_distrobox_container(app_name):
+    random_id = generate_random_id()
+    container_name = f"{app_name}-{random_id}"
+    logging.info(f"Creating Distrobox container: {container_name}...")
+    try:
+        run_distrobox_command([
+            'distrobox', 'create', '-n', container_name, '-i', 'debian:stable',
+            '--additional-packages', 'python3-pip fakeroot libglib2.0-bin squashfs-tools zsync git apt-file python3-yaml wget'
+        ])
+        logging.info(f"Container '{container_name}' created and packages installed.")
+
+        run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--', 'sudo', 'apt-file', 'update'
+        ])
+
+    except subprocess.CalledProcessError:
+        logging.error(f"Error creating Distrobox container '{container_name}'.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+    return container_name
+
+
+#####################################################################
+# Step 2: Install appimage-builder using pip3 inside the container. #
+#####################################################################
+
+def install_appimage_builder_in_container(container_name):
+    logging.info(f"Installing appimage-builder in container: '{container_name}'...")
+    try:
+        run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'sudo', 'pip3', 'install', '--break-system-packages',
+            'git+https://github.com/AppImageCrafters/appimage-builder.git'
+        ])
+        logging.info("appimage-builder installed successfully.")
+    except subprocess.CalledProcessError:
+        logging.error(f"Error installing appimage-builder in container '{container_name}'.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+
+#################################################################
+# Step 3: Get the application information using apt-cache show. #
+#################################################################
+
+def get_app_section(container_name, app_name):
+    logging.debug(f"Fetching section for '{app_name}' from container: {container_name}...")
+    try:
+        result = run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'apt-cache', 'show', app_name
+        ])
+        for line in result.stdout.splitlines():
+            if line.startswith("Section:"):
+                section = line.split(":", 1)[1].strip()
+                logging.debug(f"Detected section for '{app_name}': {section}")
+                return section
+        logging.error("Section not found.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+    except subprocess.CalledProcessError:
+        logging.error(f"Error retrieving section for '{app_name}'.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+
+def get_app_architecture(container_name, app_name):
+    logging.info(f"Fetching architecture for '{app_name}' from container: {container_name}'...")
+    try:
+        result = run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'apt-cache', 'show', app_name
+        ])
+        for line in result.stdout.splitlines():
+            if line.startswith("Architecture:"):
+                architecture = line.split(":", 1)[1].strip()
+                logging.info(f"Detected architecture for '{app_name}': {architecture}")
+                return architecture
+        logging.error("Architecture not found.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+    except subprocess.CalledProcessError:
+        logging.error(f"Error retrieving architecture for '{app_name}'.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+
+def get_app_version(container_name, app_name):
+    logging.info(f"Fetching version for '{app_name}' from container: {container_name}...")
+    try:
+        result = run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'apt-cache', 'show', app_name
+        ])
+        for line in result.stdout.splitlines():
+            if line.startswith("Version:"):
+                version = line.split(":", 1)[1].strip()
+                logging.info(f"Detected version for '{app_name}': {version}")
+                return version
+        logging.error("Version not found.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+    except subprocess.CalledProcessError:
+        logging.error(f"Error retrieving version for '{app_name}'.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+
+#####################################################################
+# Step 4: Get the desktop and icon information using apt-file list. #
+#####################################################################
+
+def process_icons_and_desktop_files(container_name, app_name, staging_dir, exec_path):
+    logging.debug(f"Processing icons and desktop files for '{app_name}'...")
+
+    includes_icon = False
+    includes_desktop = False
+    icon_name = None
+
+    try:
+        result = run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'apt-file', 'list', app_name
+        ])
+
+        for line in result.stdout.splitlines():
+            parts = line.split(':', 1)
+            if len(parts) != 2:
+                continue
+            file_path = parts[1].strip()
+            if not includes_icon:
+                icon_extensions = ['.svg', '.png', '.xpm']
+                if any('/icons/' in file_path and file_path.lower().endswith(ext) for ext in icon_extensions):
+                    includes_icon = True
+                    icon_file_name = os.path.basename(file_path)
+                    icon_name, _ = os.path.splitext(icon_file_name)
+                    logging.debug(f"Found icon file: {file_path}, icon_name: {icon_name}")
+            if not includes_desktop:
+                if file_path.startswith('/usr/share/applications/') and file_path.endswith('.desktop'):
+                    includes_desktop = True
+                    logging.debug(f"Found desktop launcher file: {file_path}")
+            if includes_icon and includes_desktop:
+                break
+
+        logging.debug(f"Package '{app_name}' includes icon: {includes_icon}, includes desktop launcher: {includes_desktop}")
+
+    except subprocess.CalledProcessError:
+        logging.error(f"Error checking package files for '{app_name}'.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+    if not includes_icon:
+        logging.debug(f"No icon found for '{app_name}'. Downloading default icon...")
+        icon_dest_dir = os.path.join(staging_dir, 'AppDir', 'usr', 'share', 'icons', 'hicolor', 'scalable', 'apps')
+        try:
+            os.makedirs(icon_dest_dir, exist_ok=True)
+        except OSError as e:
+            logging.error(f"Failed to create icon destination directory '{icon_dest_dir}': {e}")
+            stop_and_remove_container(container_name, staging_dir)
+            sys.exit(1)
+
+        icon_name = app_name
+        icon_dest_path = os.path.join(icon_dest_dir, f'{icon_name}.svg')
+        default_icon_url = 'https://raw.githubusercontent.com/Nitrux/luv-icon-theme/refs/heads/master/Luv/mimetypes/64/application-x-iso9660-appimage.svg'
+        try:
+            run_distrobox_command([
+                'distrobox', 'enter', '-n', container_name, '--',
+                'wget', '-O', icon_dest_path, default_icon_url
+            ])
+            logging.debug(f"Default icon downloaded to {icon_dest_path}")
+        except subprocess.CalledProcessError:
+            logging.error(f"Failed to download default icon for '{app_name}'")
+
+    else:
+        icon_source_path = file_path
+        icon_dest_dir = os.path.join(staging_dir, 'AppDir', 'usr', 'share', 'icons', 'hicolor', 'scalable', 'apps')
+        try:
+            os.makedirs(icon_dest_dir, exist_ok=True)
+        except OSError as e:
+            logging.error(f"Failed to create icon destination directory '{icon_dest_dir}': {e}")
+            stop_and_remove_container(container_name, staging_dir)
+            sys.exit(1)
+        icon_dest_path = os.path.join(icon_dest_dir, os.path.basename(file_path))
+        try:
+            run_distrobox_command([
+                'distrobox', 'enter', '-n', container_name, '--',
+                'cp', icon_source_path, icon_dest_path
+            ])
+            logging.debug(f"Copied icon to '{icon_dest_path}'")
+        except subprocess.CalledProcessError:
+            logging.error(f"Failed to copy icon from '{icon_source_path}' to '{icon_dest_path}'")
+
+    if not includes_desktop:
+        logging.debug(f"No desktop launcher found for '{app_name}'. Generating generic desktop launcher...")
+        desktop_dir = os.path.join(staging_dir, 'AppDir', 'usr', 'share', 'applications')
+        try:
+            os.makedirs(desktop_dir, exist_ok=True)
+        except OSError as e:
+            logging.error(f"Failed to create desktop applications directory '{desktop_dir}': {e}")
+            stop_and_remove_container(container_name, staging_dir)
+            sys.exit(1)
+        desktop_file_path = os.path.join(desktop_dir, f'{app_name}.desktop')
+
+        desktop_entry = f"""[Desktop Entry]
+Name={app_name}
+Exec={exec_path}
+Icon={icon_name}
+Type=Application
+Terminal=true
+Categories=Utility;
+"""
+        try:
+            with open(desktop_file_path, 'w') as desktop_file:
+                desktop_file.write(desktop_entry)
+            logging.debug(f"Generic desktop launcher created at '{desktop_file_path}'")
+        except (OSError, IOError) as e:
+            logging.error(f"Failed to create desktop launcher at '{desktop_file_path}': {e}")
+
+    return icon_name
+
+
+###########################################
+# Step 5: Get the kernel CPU architecture #
+###########################################
+
+def get_kernel_architecture():
+    logging.info("Fetching kernel CPU architecture...")
+    try:
+        result = subprocess.run(['uname', '-m'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=True)
+        arch = result.stdout.strip()
+        logging.info(f"Building for CPU architecture: {arch}")
+        return arch
+    except subprocess.CalledProcessError:
+        logging.error("Error retrieving CPU architecture.")
+        sys.exit(1)
+
+
+###############################################################
+# Step 6: Get the path to the executable using apt-file list. #
+###############################################################
+
+def get_executable_path(container_name, app_name):
+    logging.debug(f"Fetching executable path for '{app_name}' from container: {container_name}...")
+    try:
+        result = run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'apt-file', 'list', app_name
+        ])
+
+        exec_paths = []
+        for line in result.stdout.splitlines():
+            if ':' in line:
+                _, file_path = line.split(':', 1)
+                file_path = file_path.strip()
+                if (file_path.startswith('/usr/bin/') or
+                    file_path.startswith('/bin/') or
+                    file_path.startswith('/usr/games/')):
+                    exec_paths.append(file_path.lstrip('/'))
+
+        if not exec_paths:
+            fallback_exec_path = f"usr/bin/{app_name}"
+            logging.warning(f"No executables found under '/usr/bin/', '/bin/', or '/usr/games/' for '{app_name}'. Falling back to '{fallback_exec_path}'.")
+            return fallback_exec_path
+        else:
+            executable_names = [os.path.basename(path) for path in exec_paths]
+            similarity_scores = [(name, difflib.SequenceMatcher(None, app_name, name).ratio()) for name in executable_names]
+            similarity_scores.sort(key=lambda x: x[1], reverse=True)
+            best_match_name, best_score = similarity_scores[0]
+            logging.debug(f"Best match for '{app_name}' is '{best_match_name}' with similarity score {best_score:.2f}")
+            for path in exec_paths:
+                if os.path.basename(path) == best_match_name:
+                    selected_path = path
+                    logging.debug(f"Selected executable path: {selected_path}")
+                    return selected_path
+            logging.error(f"Executable '{best_match_name}' not found in paths.")
+            stop_and_remove_container(container_name)
+            sys.exit(1)
+    except subprocess.CalledProcessError:
+        logging.error(f"Error retrieving executable path for '{app_name}'.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+
+##########################################################################
+# Step 7: Create a YAML recipe using a template and directory structure. #
+##########################################################################
+
+def create_staging_area(app_name, container_name):
+    staging_dir = f"/tmp/{container_name}"
+    try:
+        os.makedirs(staging_dir, exist_ok=True)
+        logging.debug(f"Staging area created at: '{staging_dir}'")
+    except OSError as e:
+        logging.error(f"Failed to create staging area '{staging_dir}': {e}")
+        sys.exit(1)
+    return staging_dir
+
+
+def clean_staging_area(staging_dir):
+    try:
+        shutil.rmtree(staging_dir)
+        logging.debug(f"Staging area '{staging_dir}' deleted.")
+    except Exception as e:
+        logging.critical(f"Error cleaning staging area: {e}")
+
+
+class QuotedStr(str):
+    pass
+
+def quoted_str_representer(dumper, data):
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data, style="'")
+
+yaml.SafeDumper.add_representer(QuotedStr, quoted_str_representer)
+
+class LiteralStr(str):
+    pass
+
+def literal_representer(dumper, data):
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+yaml.SafeDumper.add_representer(LiteralStr, literal_representer)
+
+def create_yaml_recipe(app_name, app_version, exec_path, repo_codename, container_name, staging_dir, app_architecture, kernel_architecture, icon_name):
+    default_dependencies = ['bash', 'dash', app_name]
+
+    appimage_builder_dir = os.path.join(staging_dir, f"{app_name}-appimage")
+    try:
+        os.makedirs(appimage_builder_dir, exist_ok=True)
+        logging.debug(f"AppImage builder directory created at: {appimage_builder_dir}")
+    except OSError as e:
+        logging.error(f"Failed to create AppImage builder directory '{appimage_builder_dir}': {e}")
+        stop_and_remove_container(container_name, staging_dir)
+        sys.exit(1)
+
+    recipe_path = os.path.join(appimage_builder_dir, f"{app_name}-appimage.yaml")
+
+    recipe = {
+        'version': 1,
+        'AppDir': {
+            'path': './AppDir',
+            'app_info': {
+                'id': app_name,
+                'name': app_name,
+                'icon': icon_name,
+                'version': app_version,
+                'exec': exec_path,
+                'exec_args': '$@'
+            },
+            'runtime': {
+                'env': {
+                    'PATH': QuotedStr('${APPDIR}/usr/bin:${APPDIR}/bin:${APPDIR}/usr/lib/x86_64-linux-gnu/libexec/kf5:$PATH'),
+                    'XDG_DATA_DIRS': QuotedStr('${APPDIR}/usr/local/share:${APPDIR}/usr/share:$XDG_DATA_DIRS')
+                }
+            },
+            'after_bundle': [
+                "cd ./AppDir/usr/bin && ln -sf bash sh && cd -"
+            ],
+            'apt': {
+                'arch': [app_architecture],
+                'allow_unauthenticated': True,
+                'sources': [
+                    {
+                        'sourceline': LiteralStr(f"deb [arch={app_architecture}] http://deb.debian.org/debian {repo_codename} main contrib non-free non-free-firmware"),
+                        'key_url': 'https://ftp-master.debian.org/keys/archive-key-12.asc'
+                    }
+                ],
+                'include': default_dependencies,
+                'exclude': ['systemd']
+            },
+            'files': {
+                'include': ['/usr/bin/which'],
+                'exclude': [
+                    'usr/include', 'usr/share/man', 'usr/share/doc', 'usr/share/doc/*/README.*',
+                    'usr/share/doc/*/changelog.*', 'usr/share/doc/*/NEWS.*', 'usr/share/doc/*/TODO.*',
+                    'lib/systemd', 'etc/systemd', 'usr/lib/systemd', 'usr/bin/systemd*',
+                    'usr/bin/dpkg*', 'usr/bin/*-linux-gnu-*', 'usr/lib/*-linux-gnu/systemd',
+                    'usr/bin/systemd-*', 'usr/share/locale'
+                ]
+            }
+        },
+        'AppImage': {
+            'arch': kernel_architecture,
+            'comp': 'xz',
+            'file_name': f"{app_name}-{kernel_architecture}.AppImage",
+            'update-information': f"gh-releases-zsync|Nitrux|{app_name}|{app_version}|*{kernel_architecture}.AppImage.zsync"
+        }
+    }
+
+    try:
+        with open(recipe_path, 'w') as yaml_file:
+            yaml.dump(
+                recipe,
+                yaml_file,
+                default_flow_style=False,
+                sort_keys=False,
+                indent=2,
+                width=4096,
+                allow_unicode=True,
+                Dumper=yaml.SafeDumper
+            )
+        logging.debug(f"YAML recipe saved at: {recipe_path}")
+    except (OSError, IOError) as e:
+        logging.error(f"Failed to write YAML recipe to '{recipe_path}': {e}")
+        stop_and_remove_container(container_name, staging_dir)
+        sys.exit(1)
+
+    return recipe_path
+
+
+###############################################################################
+# Step 8: Build AppImage inside the container and move to $HOME/Applications. #
+###############################################################################
+
+def build_appimage_in_container(container_name, app_name, recipe_path, staging_dir, exec_path):
+    try:
+        logging.info(f"Building AppImage for '{app_name}' using recipe at '{recipe_path}'...")
+
+        run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--', 'bash', '-c',
+            f'cd {staging_dir} && appimage-builder --recipe {recipe_path} --skip-tests'
+        ])
+
+        appimage_dir = os.path.expanduser("~/Applications")
+        try:
+            os.makedirs(appimage_dir, exist_ok=True)
+        except OSError as e:
+            logging.error(f"Failed to create Applications directory '{appimage_dir}': {e}")
+            clean_staging_area(staging_dir)
+            return False
+
+        built_appimage = os.path.join(staging_dir, f"{app_name}-x86_64.AppImage")
+
+        if os.path.exists(built_appimage):
+            destination_path = os.path.join(appimage_dir, f"{app_name}-x86_64.AppImage")
+            try:
+                shutil.move(built_appimage, destination_path)
+                logging.debug(f"AppImage moved to: {destination_path}")
+                return True
+            except (OSError, shutil.Error) as e:
+                logging.error(f"Failed to move AppImage to '{destination_path}': {e}")
+                return False
+        else:
+            logging.error(f"AppImage not found at {built_appimage}. Checking for subdirectories...")
+
+            for root, dirs, files in os.walk(staging_dir):
+                for file in files:
+                    if file.endswith(f"{app_name}-x86_64.AppImage"):
+                        built_appimage = os.path.join(root, file)
+                        destination_path = os.path.join(appimage_dir, file)
+                        try:
+                            shutil.move(built_appimage, destination_path)
+                            logging.debug(f"AppImage found and moved to: {destination_path}")
+                            return True
+                        except (OSError, shutil.Error) as e:
+                            logging.error(f"Failed to move AppImage to '{destination_path}': {e}")
+                            return False
+
+            logging.error("Error: AppImage not found after checking subdirectories.")
+            return False
+
+    except subprocess.CalledProcessError as e:
+        stderr_output = e.stderr.strip()
+        if "RuntimeError: Main executable is not an elf executable" in stderr_output:
+            logging.error(f"Build failed for '{app_name}': Main executable is not an ELF executable.")
+        elif f"No such file or directory: '{exec_path}'" in stderr_output:
+            logging.error(f"Build failed for '{app_name}': Executable '{exec_path}' not found.")
+        else:
+            logging.error(f"Error building AppImage for '{app_name}': {stderr_output}")
+
+        clean_staging_area(staging_dir)
+        return False
+
+
+###################
+# Build function. #
+###################
+
+def handle_build(app, repo_codename):
+    app_name = app
+    container_name = create_distrobox_container(app_name)
+    try:
+        install_appimage_builder_in_container(container_name)
+        app_version = get_app_version(container_name, app_name)
+        app_section = get_app_section(container_name, app_name)
+        if app_section == 'metapackages':
+            logging.error(f"Cannot build AppImage for '{app_name}' because it is a metapackage.")
+            return (app_name, False)
+        app_architecture = get_app_architecture(container_name, app_name)
+        exec_path = get_executable_path(container_name, app_name)
+        kernel_architecture = get_kernel_architecture()
+        staging_dir = create_staging_area(app_name, container_name)
+
+        icon_name = process_icons_and_desktop_files(container_name, app_name, staging_dir, exec_path)
+
+        recipe_path = create_yaml_recipe(
+            app_name, app_version, exec_path, repo_codename,
+            container_name, staging_dir, app_architecture, kernel_architecture, icon_name
+        )
+
+        success = build_appimage_in_container(
+            container_name, app_name, recipe_path, staging_dir, exec_path
+        )
+        return (app_name, success)
+    finally:
+        stop_and_remove_container(container_name, staging_dir)
+
+
+##################
+# Main function. #
+##################
+
+def main():
+    parser = CustomArgumentParser(
+        description="NX Applications Hub is a program that manages AppImages by building them locally using containers.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+
+    parser.add_argument(
+        'applications',
+        metavar='APP',
+        type=str,
+        nargs='+',
+        help='Name(s) of the application(s) to build AppImage(s) for.'
+    )
+
+    parser.add_argument(
+        '--repo',
+        required=True,
+        type=str,
+        choices=['stable', 'testing', 'unstable'],
+        help='Debian repository codename to use.'
+    )
+
+    parser.add_argument(
+        '--log-level',
+        type=str,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default='INFO',
+        help='Logging level (default: INFO).'
+    )
+
+    parser.add_argument(
+        '--parallel',
+        type=int,
+        default=1,
+        help='Number of parallel builds to run (default: 1).'
+    )
+
+    try:
+        args = parser.parse_args()
+
+        setup_logging(args.log_level)
+
+        check_distrobox_installed()
+
+        build_tasks = []
+        all_success = True 
+
+        for app in args.applications:
+            if app.startswith('lib') or app.endswith('-dev'):
+                logging.error(f"Invalid application name '{app}'. Libraries and development packages cannot be built as AppImages.")
+                all_success = False
+                continue
+            build_tasks.append((app, args.repo))
+
+        if not build_tasks:
+            logging.error("No valid applications to build. Exiting.")
+            sys.exit(1)
+
+        with ThreadPoolExecutor(max_workers=args.parallel) as executor:
+            future_to_app = {
+                executor.submit(handle_build, app, repo_codename): app
+                for app, repo_codename in build_tasks
+            }
+            for future in as_completed(future_to_app):
+                app = future_to_app[future]
+                try:
+                    app_name, success = future.result()
+                    if success:
+                        logging.info(f"AppImage for '{app_name}' built successfully.")
+                    else:
+                        logging.error(f"AppImage for '{app_name}' failed to build.")
+                        all_success = False
+                except Exception as exc:
+                    logging.critical(f"AppImage for '{app}' generated an exception: {exc}")
+                    all_success = False
+
+        if all_success:
+            logging.info("All build processes completed.")
+        else:
+            logging.warning("Some build processes failed or were invalid. Check the logs for details.")
+
+    except Exception as e:
+        logging.critical(f"An unexpected error occurred: {e}")
+        sys.exit(1)
+
+
+########################
+# Execute the program. #
+########################
+
+if __name__ == "__main__":
+    main()
