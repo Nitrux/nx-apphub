@@ -41,7 +41,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class CustomArgumentParser(argparse.ArgumentParser):
     def error(self, message):
-        message = message.replace("APP", "«APP»").replace("--repo", "«REPO»")
+        message = message.replace("APP", "«APP»").replace("--install", "«--install»")
         sys.stderr.write(f"error: {message}\n\n")
         sys.stderr.write("See «nx-apphub-cli -h» for help.\n")
         sys.exit(2)
@@ -518,7 +518,7 @@ def literal_representer(dumper, data):
 
 yaml.SafeDumper.add_representer(LiteralStr, literal_representer)
 
-def create_yaml_recipe(app_name, app_version, exec_path, repo_codename, container_name, staging_dir, app_architecture, kernel_architecture, icon_name):
+def create_yaml_recipe(app_name, app_version, exec_path, container_name, staging_dir, app_architecture, kernel_architecture, icon_name):
     default_dependencies = ['bash', 'dash', app_name]
 
     appimage_builder_dir = os.path.join(staging_dir, f"{app_name}-appimage")
@@ -531,6 +531,8 @@ def create_yaml_recipe(app_name, app_version, exec_path, repo_codename, containe
         sys.exit(1)
 
     recipe_path = os.path.join(appimage_builder_dir, f"{app_name}-appimage.yaml")
+
+    repo_codename = 'stable'
 
     recipe = {
         'version': 1,
@@ -673,7 +675,7 @@ def build_appimage_in_container(container_name, app_name, recipe_path, staging_d
 # Build function. #
 ###################
 
-def handle_build(app, repo_codename):
+def handle_build(app):
     app_name = app
     container_name = create_distrobox_container(app_name)
     try:
@@ -691,7 +693,7 @@ def handle_build(app, repo_codename):
         icon_name = process_icons_and_desktop_files(container_name, app_name, staging_dir, exec_path)
 
         recipe_path = create_yaml_recipe(
-            app_name, app_version, exec_path, repo_codename,
+            app_name, app_version, exec_path,
             container_name, staging_dir, app_architecture, kernel_architecture, icon_name
         )
 
@@ -714,19 +716,11 @@ def main():
     )
 
     parser.add_argument(
-        'applications',
-        metavar='APP',
+        '--install',
         type=str,
         nargs='+',
-        help='Name(s) of the application(s) to build AppImage(s) for.'
-    )
-
-    parser.add_argument(
-        '--repo',
         required=True,
-        type=str,
-        choices=['stable', 'testing', 'unstable'],
-        help='Debian repository codename to use.'
+        help='Name(s) of the application(s) to build AppImage(s) for.'
     )
 
     parser.add_argument(
@@ -752,14 +746,15 @@ def main():
         check_distrobox_installed()
 
         build_tasks = []
-        all_success = True 
+        all_success = True
 
-        for app in args.applications:
+        for app in args.install:
+            app = app.strip()
             if app.startswith('lib') or app.endswith('-dev'):
                 logging.error(f"Invalid application name '{app}'. Libraries and development packages cannot be built as AppImages.")
                 all_success = False
                 continue
-            build_tasks.append((app, args.repo))
+            build_tasks.append(app)
 
         if not build_tasks:
             logging.error("No valid applications to build. Exiting.")
@@ -767,8 +762,8 @@ def main():
 
         with ThreadPoolExecutor(max_workers=args.parallel) as executor:
             future_to_app = {
-                executor.submit(handle_build, app, repo_codename): app
-                for app, repo_codename in build_tasks
+                executor.submit(handle_build, app): app
+                for app in build_tasks
             }
             for future in as_completed(future_to_app):
                 app = future_to_app[future]
