@@ -39,7 +39,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # General functions. #
 ######################
 
-class NoChoiceHelpFormatter(argparse.HelpFormatter):
+class NoChoiceHelpFormatter(argparse.RawDescriptionHelpFormatter):
     def _format_action_invocation(self, action):
         if not action.option_strings:
             return super()._format_action_invocation(action)
