@@ -719,7 +719,7 @@ def handle_build(app):
 def main():
     parser = CustomArgumentParser(
         description="""
-NX Applications Hub is a tool developed to facilitate the creation and management of AppImages. Utilizing Distrobox containers automates the complex process of packaging software to generate portable and self-contained applications efficiently. 
+NX Applications Hub is a tool developed to facilitate the creation and management of AppImages. Using Distrobox containers to generate portable and self-contained applications efficiently.
 
 ⚠️ Important: NX Applications Hub is intended for use in Nitrux OS, and using this utility in other distributions will not work out of the box.
 """,
