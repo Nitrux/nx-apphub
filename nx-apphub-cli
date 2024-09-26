@@ -41,8 +41,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class CustomArgumentParser(argparse.ArgumentParser):
     def error(self, message):
-        message = message.replace("APP", "«APP»").replace("--install", "«--install»")
-        sys.stderr.write(f"error: {message}\n\n")
+        if 'install' in message:
+            custom_message = "Unspecified command"
+        else:
+            custom_message = message
+        
+        red_color = '\033[91m'
+        reset_color = '\033[0m'
+        
+        sys.stderr.write(f"{red_color}error:{reset_color}  {custom_message}\n\n")
         sys.stderr.write("See «nx-apphub-cli -h» for help.\n")
         sys.exit(2)
 
@@ -711,28 +718,31 @@ def handle_build(app):
 
 def main():
     parser = CustomArgumentParser(
-        description="NX Applications Hub is a program that manages AppImages by building them locally using containers.",
+        description="""
+NX Applications Hub is a tool developed to facilitate the creation and management of AppImages. Utilizing Distrobox containers automates the complex process of packaging software to generate portable and self-contained applications efficiently. 
+
+⚠️ Important: NX Applications Hub is intended for use in Nitrux OS, and using this utility in other distributions will not work out of the box.
+""",
         formatter_class=argparse.RawTextHelpFormatter
     )
 
     parser.add_argument(
-        '--install',
+        'install',
         type=str,
         nargs='+',
-        required=True,
         help='Name(s) of the application(s) for which to build AppImage(s).'
     )
 
     parser.add_argument(
-        '--log-level',
+        '-l', '--log-level',
         type=str,
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
         default='INFO',
-        help='Logging level (default: INFO).'
+        help='Logging level {DEBUG,INFO,WARNING,ERROR,CRITICAL} (default: INFO).'
     )
 
     parser.add_argument(
-        '--parallel',
+        '-p', '--parallel',
         type=int,
         default=1,
         help='Number of parallel builds to run (default: 1).'
