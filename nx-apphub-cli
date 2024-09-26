@@ -32,6 +32,7 @@ import argparse
 import logging
 import yaml
 import difflib
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -280,7 +281,7 @@ def get_app_section(container_name, app_name):
 
 
 def get_app_architecture(container_name, app_name):
-    logging.info(f"Fetching architecture for '{app_name}' from container: {container_name}'...")
+    logging.debug(f"Fetching architecture for '{app_name}' from container: {container_name}'...")
     try:
         result = run_distrobox_command([
             'distrobox', 'enter', '-n', container_name, '--',
@@ -289,7 +290,7 @@ def get_app_architecture(container_name, app_name):
         for line in result.stdout.splitlines():
             if line.startswith("Architecture:"):
                 architecture = line.split(":", 1)[1].strip()
-                logging.info(f"Detected architecture for '{app_name}': {architecture}")
+                logging.info(f"Detected package architecture for '{app_name}': {architecture}")
                 return architecture
         logging.error("Architecture not found.")
         stop_and_remove_container(container_name)
@@ -301,7 +302,7 @@ def get_app_architecture(container_name, app_name):
 
 
 def get_app_version(container_name, app_name):
-    logging.info(f"Fetching version for '{app_name}' from container: {container_name}...")
+    logging.debug(f"Fetching version for '{app_name}' from container: {container_name}...")
     try:
         result = run_distrobox_command([
             'distrobox', 'enter', '-n', container_name, '--',
@@ -317,6 +318,26 @@ def get_app_version(container_name, app_name):
         sys.exit(1)
     except subprocess.CalledProcessError:
         logging.error(f"Error retrieving version for '{app_name}'.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+def get_app_checksum(container_name, app_name):
+    logging.debug(f"Fetching MD5 checksum for '{app_name}' from container: {container_name}...")
+    try:
+        result = run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'apt-cache', 'show', app_name
+        ])
+        for line in result.stdout.splitlines():
+            if line.startswith("MD5sum:"):
+                checksum = line.split(":", 1)[1].strip()
+                logging.info(f"Detected MD5 checksum for '{app_name}': {checksum}")
+                return checksum
+        logging.error("MD5sum not found.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+    except subprocess.CalledProcessError:
+        logging.error(f"Error retrieving MD5 checksum for '{app_name}'.")
         stop_and_remove_container(container_name)
         sys.exit(1)
 
@@ -439,7 +460,7 @@ Categories=Utility;
 ###########################################
 
 def get_kernel_architecture():
-    logging.info("Fetching kernel CPU architecture...")
+    logging.debug("Fetching kernel CPU architecture...")
     try:
         result = subprocess.run(['uname', '-m'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=True)
         arch = result.stdout.strip()
@@ -565,7 +586,7 @@ def create_yaml_recipe(app_name, app_version, exec_path, container_name, staging
             },
             'runtime': {
                 'env': {
-                    'PATH': QuotedStr('${APPDIR}/usr/bin:${APPDIR}/bin:${APPDIR}/usr/lib/x86_64-linux-gnu/libexec/kf5:$PATH'),
+                    'PATH': QuotedStr('${APPDIR}/usr/bin:${APPDIR}/bin:${APPDIR}/usr/lib/{kernel_architecture}-linux-gnu/libexec/kf5:$PATH'),
                     'XDG_DATA_DIRS': QuotedStr('${APPDIR}/usr/local/share:${APPDIR}/usr/share:$XDG_DATA_DIRS')
                 }
             },
@@ -645,10 +666,12 @@ def build_appimage_in_container(container_name, app_name, recipe_path, staging_d
             clean_staging_area(staging_dir)
             return False
 
-        built_appimage = os.path.join(staging_dir, f"{app_name}-x86_64.AppImage")
+        kernel_architecture = get_kernel_architecture()
+
+        built_appimage = os.path.join(staging_dir, f"{app_name}-{kernel_architecture}.AppImage")
 
         if os.path.exists(built_appimage):
-            destination_path = os.path.join(appimage_dir, f"{app_name}-x86_64.AppImage")
+            destination_path = os.path.join(appimage_dir, f"{app_name}-{kernel_architecture}.AppImage")
             try:
                 shutil.move(built_appimage, destination_path)
                 logging.debug(f"AppImage moved to: {destination_path}")
@@ -661,7 +684,7 @@ def build_appimage_in_container(container_name, app_name, recipe_path, staging_d
 
             for root, dirs, files in os.walk(staging_dir):
                 for file in files:
-                    if file.endswith(f"{app_name}-x86_64.AppImage"):
+                    if file.endswith(f"{app_name}-{kernel_architecture}.AppImage"):
                         built_appimage = os.path.join(root, file)
                         destination_path = os.path.join(appimage_dir, file)
                         try:
@@ -688,6 +711,70 @@ def build_appimage_in_container(container_name, app_name, recipe_path, staging_d
         return False
 
 
+##############################################################
+# Step 9: Compute the checksum of the AppImage using SHA512. #
+##############################################################
+
+def compute_sha512(file_path):
+    logging.info(f"Computing SHA512 checksum for '{file_path}'...")
+    sha512 = hashlib.sha512()
+    try:
+        with open(file_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                sha512.update(chunk)
+        checksum = sha512.hexdigest()
+        logging.info(f"SHA512 checksum for '{file_path}': {checksum}")
+        return checksum
+    except IOError as e:
+        logging.error(f"Failed to compute SHA512 checksum for '{file_path}': {e}")
+        return "N/A"
+
+
+################################################################
+# Step 10: Maintain a list of installed AppImages built by us. #
+################################################################
+
+def update_installed_files(app_name, app_version, package_checksum, appimage_file, appimage_checksum):
+    import os
+
+    install_dir = os.path.expanduser("~/.local/share/nx-apphub")
+    os.makedirs(install_dir, exist_ok=True)
+    installed_files_path = os.path.join(install_dir, "installed_files")
+
+    columns = ["Application", "Version", "Package Checksum (MD5)", "AppImage File", "AppImage Checksum (SHA512)"]
+    new_entry = [app_name, app_version, package_checksum, appimage_file, appimage_checksum]
+    fixed_lengths = [0, 0, 32, 0, 128]
+
+    if not os.path.exists(installed_files_path):
+        with open(installed_files_path, 'w') as f:
+            f.write("| " + " | ".join(columns) + " |\n")
+            f.write("|" + "|".join(['-' * (len(col)+2) for col in columns]) + "|\n")
+
+    with open(installed_files_path, 'r') as f:
+        lines = f.readlines()
+
+    current_columns = lines[0].strip().split('|')[1:-1]
+    max_lengths = [len(col.strip()) if fixed_lengths[i] == 0 else fixed_lengths[i] for i, col in enumerate(current_columns)]
+
+    for i, item in enumerate(new_entry):
+        if fixed_lengths[i] == 0:
+            max_lengths[i] = max(max_lengths[i], len(item))
+
+    header = "| " + " | ".join([columns[i].ljust(max_lengths[i]) for i in range(len(columns))]) + " |\n"
+    separator = "|" + "|".join(['-' * (max_lengths[i]+2) for i in range(len(columns))]) + "|\n"
+
+    with open(installed_files_path, 'w') as f:
+        f.write(header)
+        f.write(separator)
+        for line in lines[2:]:
+            f.write(line)
+        formatted_line = "| " + " | ".join([
+            new_entry[i].ljust(max_lengths[i]) if fixed_lengths[i] == 0 else new_entry[i]
+            for i in range(len(new_entry))
+        ]) + " |\n"
+        f.write(formatted_line)
+
+
 ###################
 # Build function. #
 ###################
@@ -704,6 +791,7 @@ def handle_build(app):
             return (app_name, False)
         app_architecture = get_app_architecture(container_name, app_name)
         exec_path = get_executable_path(container_name, app_name)
+        package_checksum = get_app_checksum(container_name, app_name)
         kernel_architecture = get_kernel_architecture()
         staging_dir = create_staging_area(app_name, container_name)
 
@@ -717,6 +805,12 @@ def handle_build(app):
         success = build_appimage_in_container(
             container_name, app_name, recipe_path, staging_dir, exec_path
         )
+        if success:
+            appimage_dir = os.path.expanduser("~/Applications")
+            appimage_file = f"{app_name}-{kernel_architecture}.AppImage"
+            appimage_path = os.path.join(appimage_dir, appimage_file)
+            appimage_checksum = compute_sha512(appimage_path)
+            update_installed_files(app_name, app_version, package_checksum, appimage_file, appimage_checksum)
         return (app_name, success)
     finally:
         stop_and_remove_container(container_name, staging_dir)
@@ -735,14 +829,21 @@ NX Applications Hub is a tool developed to facilitate the creation and managemen
 """,
     )
 
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest='command', required=True)
+
+    install_parser = subparsers.add_parser(
         'install',
+        help='Build AppImage(s) for specified application(s).'
+    )
+
+    install_parser.add_argument(
+        'apps',
         type=str,
         nargs='+',
         help='Name(s) of the application(s) for which to build AppImage(s).'
     )
 
-    parser.add_argument(
+    install_parser.add_argument(
         '-l', '--log-level',
         type=str,
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
@@ -750,7 +851,7 @@ NX Applications Hub is a tool developed to facilitate the creation and managemen
         help='Logging level {DEBUG,INFO,WARNING,ERROR,CRITICAL} (default: INFO).'
     )
 
-    parser.add_argument(
+    install_parser.add_argument(
         '-p', '--parallel',
         type=int,
         default=1,
@@ -767,40 +868,41 @@ NX Applications Hub is a tool developed to facilitate the creation and managemen
         build_tasks = []
         all_success = True
 
-        for app in args.install:
-            app = app.strip()
-            if app.startswith('lib') or app.endswith('-dev'):
-                logging.error(f"Invalid application name '{app}'. Libraries and development packages cannot be built as AppImages.")
-                all_success = False
-                continue
-            build_tasks.append(app)
-
-        if not build_tasks:
-            logging.error("No valid applications to build. Exiting.")
-            sys.exit(1)
-
-        with ThreadPoolExecutor(max_workers=args.parallel) as executor:
-            future_to_app = {
-                executor.submit(handle_build, app): app
-                for app in build_tasks
-            }
-            for future in as_completed(future_to_app):
-                app = future_to_app[future]
-                try:
-                    app_name, success = future.result()
-                    if success:
-                        logging.info(f"AppImage for '{app_name}' built successfully.")
-                    else:
-                        logging.error(f"AppImage for '{app_name}' failed to build.")
-                        all_success = False
-                except Exception as exc:
-                    logging.critical(f"AppImage for '{app}' generated an exception: {exc}")
+        if args.command == 'install':
+            for app in args.apps:
+                app = app.strip()
+                if app.startswith('lib') or app.endswith('-dev'):
+                    logging.error(f"Invalid application name '{app}'. Libraries and development packages cannot be built as AppImages.")
                     all_success = False
+                    continue
+                build_tasks.append(app)
 
-        if all_success:
-            logging.info("All build processes completed.")
-        else:
-            logging.warning("Some build processes failed or were invalid. Check the logs for details.")
+            if not build_tasks:
+                logging.error("No valid applications to build. Exiting.")
+                sys.exit(1)
+
+            with ThreadPoolExecutor(max_workers=args.parallel) as executor:
+                future_to_app = {
+                    executor.submit(handle_build, app): app
+                    for app in build_tasks
+                }
+                for future in as_completed(future_to_app):
+                    app = future_to_app[future]
+                    try:
+                        app_name, success = future.result()
+                        if success:
+                            logging.info(f"AppImage for '{app_name}' built successfully.")
+                        else:
+                            logging.error(f"AppImage for '{app_name}' failed to build.")
+                            all_success = False
+                    except Exception as exc:
+                        logging.critical(f"AppImage for '{app}' generated an exception: {exc}")
+                        all_success = False
+
+            if all_success:
+                logging.info("All build processes completed.")
+            else:
+                logging.warning("Some build processes failed or were invalid. Check the logs for details.")
 
     except Exception as e:
         logging.critical(f"An unexpected error occurred: {e}")
