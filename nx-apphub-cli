@@ -109,6 +109,18 @@ def setup_logging(log_level):
     )
 
 
+def get_kernel_architecture():
+    logging.debug("Fetching kernel CPU architecture...")
+    try:
+        result = subprocess.run(['uname', '-m'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=True)
+        arch = result.stdout.strip()
+        logging.info(f"Building for CPU architecture: {arch}")
+        return arch
+    except subprocess.CalledProcessError:
+        logging.error("Error retrieving CPU architecture.")
+        sys.exit(1)
+
+
 ########################
 # Distrobox functions. #
 ########################
@@ -406,25 +418,8 @@ def process_icons_and_desktop_files(container_name, app_name, staging_dir, exec_
             logging.debug(f"Default icon downloaded to {icon_dest_path}")
         except subprocess.CalledProcessError:
             logging.error(f"Failed to download default icon for '{app_name}'")
-
-    else:
-        icon_source_path = file_path
-        icon_dest_dir = os.path.join(staging_dir, 'AppDir', 'usr', 'share', 'icons', 'hicolor', 'scalable', 'apps')
-        try:
-            os.makedirs(icon_dest_dir, exist_ok=True)
-        except OSError as e:
-            logging.error(f"Failed to create icon destination directory '{icon_dest_dir}': {e}")
             stop_and_remove_container(container_name, staging_dir)
             sys.exit(1)
-        icon_dest_path = os.path.join(icon_dest_dir, os.path.basename(file_path))
-        try:
-            run_distrobox_command([
-                'distrobox', 'enter', '-n', container_name, '--',
-                'cp', icon_source_path, icon_dest_path
-            ])
-            logging.debug(f"Copied icon to '{icon_dest_path}'")
-        except subprocess.CalledProcessError:
-            logging.error(f"Failed to copy icon from '{icon_source_path}' to '{icon_dest_path}'")
 
     if not includes_desktop:
         logging.debug(f"No desktop launcher found for '{app_name}'. Generating generic desktop launcher...")
@@ -455,24 +450,8 @@ Categories=Utility;
     return icon_name
 
 
-###########################################
-# Step 5: Get the kernel CPU architecture #
-###########################################
-
-def get_kernel_architecture():
-    logging.debug("Fetching kernel CPU architecture...")
-    try:
-        result = subprocess.run(['uname', '-m'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=True)
-        arch = result.stdout.strip()
-        logging.info(f"Building for CPU architecture: {arch}")
-        return arch
-    except subprocess.CalledProcessError:
-        logging.error("Error retrieving CPU architecture.")
-        sys.exit(1)
-
-
 ###############################################################
-# Step 6: Get the path to the executable using apt-file list. #
+# Step 5: Get the path to the executable using apt-file list. #
 ###############################################################
 
 def get_executable_path(container_name, app_name):
@@ -518,7 +497,7 @@ def get_executable_path(container_name, app_name):
 
 
 ##########################################################################
-# Step 7: Create a YAML recipe using a template and directory structure. #
+# Step 6: Create a YAML recipe using a template and directory structure. #
 ##########################################################################
 
 def create_staging_area(app_name, container_name):
@@ -646,10 +625,10 @@ def create_yaml_recipe(app_name, app_version, exec_path, container_name, staging
 
 
 ###############################################################################
-# Step 8: Build AppImage inside the container and move to $HOME/Applications. #
+# Step 7: Build AppImage inside the container and move to $HOME/Applications. #
 ###############################################################################
 
-def build_appimage_in_container(container_name, app_name, recipe_path, staging_dir, exec_path):
+def build_appimage_in_container(container_name, app_name, recipe_path, staging_dir, exec_path, kernel_architecture):
     try:
         logging.info(f"Building AppImage for '{app_name}' using recipe at '{recipe_path}'...")
 
@@ -665,8 +644,6 @@ def build_appimage_in_container(container_name, app_name, recipe_path, staging_d
             logging.error(f"Failed to create Applications directory '{appimage_dir}': {e}")
             clean_staging_area(staging_dir)
             return False
-
-        kernel_architecture = get_kernel_architecture()
 
         built_appimage = os.path.join(staging_dir, f"{app_name}-{kernel_architecture}.AppImage")
 
@@ -712,7 +689,7 @@ def build_appimage_in_container(container_name, app_name, recipe_path, staging_d
 
 
 ##############################################################
-# Step 9: Compute the checksum of the AppImage using SHA512. #
+# Step 8: Compute the checksum of the AppImage using SHA512. #
 ##############################################################
 
 def compute_sha512(file_path):
@@ -730,9 +707,9 @@ def compute_sha512(file_path):
         return "N/A"
 
 
-################################################################
-# Step 10: Maintain a list of installed AppImages built by us. #
-################################################################
+###############################################################
+# Step 9: Maintain a list of installed AppImages built by us. #
+###############################################################
 
 def update_installed_files(app_name, app_version, package_checksum, appimage_file, appimage_checksum):
     import os
@@ -745,7 +722,7 @@ def update_installed_files(app_name, app_version, package_checksum, appimage_fil
     new_entry = [app_name, app_version, package_checksum, appimage_file, appimage_checksum]
     fixed_lengths = [0, 0, 32, 0, 128]
 
-    if not os.path.exists(installed_files_path):
+    if not os.path.exists(installed_files_path) or os.path.getsize(installed_files_path) == 0:
         with open(installed_files_path, 'w') as f:
             f.write("| " + " | ".join(columns) + " |\n")
             f.write("|" + "|".join(['-' * (len(col)+2) for col in columns]) + "|\n")
@@ -753,12 +730,27 @@ def update_installed_files(app_name, app_version, package_checksum, appimage_fil
     with open(installed_files_path, 'r') as f:
         lines = f.readlines()
 
-    current_columns = lines[0].strip().split('|')[1:-1]
-    max_lengths = [len(col.strip()) if fixed_lengths[i] == 0 else fixed_lengths[i] for i, col in enumerate(current_columns)]
+    if len(lines) < 2:
+        with open(installed_files_path, 'w') as f:
+            f.write("| " + " | ".join(columns) + " |\n")
+            f.write("|" + "|".join(['-' * (len(col)+2) for col in columns]) + "|\n")
+        current_columns = columns
+        max_lengths = [len(col) for col in columns]
+    else:
+        current_columns = lines[0].strip().split('|')[1:-1]
+        data_lines = lines[2:]
+        max_lengths = [len(col.strip()) if fixed_lengths[i] == 0 else fixed_lengths[i] for i, col in enumerate(current_columns)]
 
-    for i, item in enumerate(new_entry):
-        if fixed_lengths[i] == 0:
-            max_lengths[i] = max(max_lengths[i], len(item))
+        for line in data_lines:
+            parts = line.strip().split('|')[1:-1]
+            for i, part in enumerate(parts):
+                part = part.strip()
+                if fixed_lengths[i] == 0:
+                    max_lengths[i] = max(max_lengths[i], len(part))
+
+        for i, item in enumerate(new_entry):
+            if fixed_lengths[i] == 0:
+                max_lengths[i] = max(max_lengths[i], len(item))
 
     header = "| " + " | ".join([columns[i].ljust(max_lengths[i]) for i in range(len(columns))]) + " |\n"
     separator = "|" + "|".join(['-' * (max_lengths[i]+2) for i in range(len(columns))]) + "|\n"
@@ -767,12 +759,17 @@ def update_installed_files(app_name, app_version, package_checksum, appimage_fil
         f.write(header)
         f.write(separator)
         for line in lines[2:]:
-            f.write(line)
-        formatted_line = "| " + " | ".join([
+            parts = line.strip().split('|')[1:-1]
+            formatted_line = "| " + " | ".join([
+                parts[i].strip().ljust(max_lengths[i]) if fixed_lengths[i] == 0 else parts[i].strip()
+                for i in range(len(parts))
+            ]) + " |\n"
+            f.write(formatted_line)
+        formatted_new_line = "| " + " | ".join([
             new_entry[i].ljust(max_lengths[i]) if fixed_lengths[i] == 0 else new_entry[i]
             for i in range(len(new_entry))
         ]) + " |\n"
-        f.write(formatted_line)
+        f.write(formatted_new_line)
 
 
 ###################
@@ -803,7 +800,7 @@ def handle_build(app):
         )
 
         success = build_appimage_in_container(
-            container_name, app_name, recipe_path, staging_dir, exec_path
+            container_name, app_name, recipe_path, staging_dir, exec_path, kernel_architecture
         )
         if success:
             appimage_dir = os.path.expanduser("~/Applications")
