@@ -565,8 +565,7 @@ def create_yaml_recipe(app_name, app_version, exec_path, container_name, staging
             },
             'runtime': {
                 'env': {
-                    'PATH': QuotedStr('${APPDIR}/usr/bin:${APPDIR}/bin:${APPDIR}/usr/lib/{kernel_architecture}-linux-gnu/libexec/kf5:$PATH'),
-                    'XDG_DATA_DIRS': QuotedStr('${APPDIR}/usr/local/share:${APPDIR}/usr/share:$XDG_DATA_DIRS')
+                    'PATH': QuotedStr('${APPDIR}/usr/bin:${APPDIR}/bin:${APPDIR}/usr/lib/{kernel_architecture}-linux-gnu/libexec/kf5:$PATH')
                 }
             },
             'after_bundle': [
