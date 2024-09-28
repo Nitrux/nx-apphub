@@ -843,9 +843,11 @@ def handle_remove(apps):
     installed_apps = []
     for entry in data_entries:
         if len(entry) != len(headers):
-            continue 
+            continue
         app_dict = {headers[i]: entry[i].strip() for i in range(len(headers))}
         installed_apps.append(app_dict)
+
+    fixed_lengths = [0, 0, 32, 0, 128]
 
     for app in apps:
         matched = False
@@ -873,12 +875,32 @@ def handle_remove(apps):
             logging.warning(f"Application '{app}' not found in installed files list.")
             apps_not_found.append(app)
 
+    if not installed_apps:
+        logging.warning("No AppImages remain after removal.")
+
+    max_lengths = [0] * len(headers)
+    for i, col in enumerate(headers):
+        if fixed_lengths[i] > 0:
+            max_lengths[i] = fixed_lengths[i]
+        else:
+            max_length = len(col)
+            for app_entry in installed_apps:
+                content_length = len(app_entry[col])
+                if content_length > max_length:
+                    max_length = content_length
+            max_lengths[i] = max_length
+
     try:
         with open(installed_files_path, 'w') as f:
-            f.write("| " + " | ".join(headers) + " |\n")
-            f.write("|" + "|".join(['-' * (len(col)+2) for col in headers]) + "|\n")
+            header = "| " + " | ".join([headers[i].ljust(max_lengths[i]) for i in range(len(headers))]) + " |\n"
+            f.write(header)
+            separator = "|" + "|".join(['-' * (max_lengths[i] + 2) for i in range(len(headers))]) + "|\n"
+            f.write(separator)
             for app_entry in installed_apps:
-                row = "| " + " | ".join([app_entry[col] for col in headers]) + " |\n"
+                row = "| " + " | ".join([
+                    app_entry[col].ljust(max_lengths[i]) if fixed_lengths[i] == 0 else app_entry[col]
+                    for i, col in enumerate(headers)
+                ]) + " |\n"
                 f.write(row)
     except IOError as e:
         logging.error(f"Failed to write updated installed files list: {e}")
