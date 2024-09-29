@@ -958,16 +958,6 @@ def handle_update():
     container_name = create_distrobox_container("update")
 
     try:
-        run_distrobox_command([
-            'distrobox', 'enter', '-n', container_name, '--',
-            'apt-cache', 'show'] + app_names
-        )
-    except subprocess.CalledProcessError:
-        logging.error("Failed to retrieve package information for update.")
-        stop_and_remove_container(container_name)
-        sys.exit(1)
-
-    try:
         result = run_distrobox_command([
             'distrobox', 'enter', '-n', container_name, '--',
             'apt-cache', 'show'] + app_names
@@ -1032,7 +1022,8 @@ def handle_update():
 
     try:
         with open(installed_files_path, 'w') as f:
-            fixed_lengths = [0, 0, 32, 0, 128]
+            fixed_lengths = [0, 0, 32, 0, 128] 
+            headers = [header.strip() for header in lines[0].strip().strip('|').split('|')]
             max_lengths = [len(col) if fixed_lengths[i] == 0 else fixed_lengths[i] for i, col in enumerate(headers)]
             for app_entry in installed_apps:
                 for i, col in enumerate(headers):
@@ -1201,7 +1192,7 @@ If you encounter problems with this software, please create an issue.
             if update_success is True:
                 logging.info("AppImage(s) updated successfully.")
             elif update_success is None:
-                logging.info("No AppImages to update.")
+                logging.info("No AppImages were updated.")
             else:
                 logging.warning("Some AppImage(s) failed to update. Check the logs for details.")
 
