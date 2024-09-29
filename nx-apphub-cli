@@ -1062,7 +1062,7 @@ def handle_update():
 def main():
     parser = CustomArgumentParser(
         description="""
-NX Applications Hub——Locally built AppImages for Nitrux.
+NX Applications Hub — «Locally built AppImages for Nitrux»
 
 NX Applications Hub is a tool developed By Nitrux Latinoamericana S.C. to facilitate the creation and management of AppImages. 
 Using Distrobox containers and appimage-builder, we generate portable and self-contained applications efficiently locally without external CI configuration.
