@@ -1072,7 +1072,7 @@ This software is under the conditions of the BSD 3-Clause license.
         ⚠️ Important: This application was designed for Nitrux OS. Using it in other distributions may cause problems or not work at all. 
                      Please don't open issues about this; they will be closed.
 
-If you encounter problems with this software, please create an issue.
+If you encounter problems with this software, please create an issue at https://github.com/Nitrux/nx-apphub/issues.
 
 ©2024 Nitrux Latinoamericana S.C.
 """,
