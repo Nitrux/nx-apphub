@@ -927,18 +927,18 @@ def handle_update():
     all_success = True
 
     if not os.path.exists(installed_files_path):
-        logging.error(f"Installed files list not found at '{installed_files_path}'. Nothing to update.")
+        logging.error(f"Can't list installed applications '{installed_files_path}'.")
         return False
 
     try:
         with open(installed_files_path, 'r') as f:
             lines = f.readlines()
     except IOError as e:
-        logging.error(f"Failed to read installed files list: {e}")
+        logging.error(f"Failed to list installed applications: {e}")
         return False
 
     if len(lines) < 2:
-        logging.error("Installed files list is empty. Nothing to update.")
+        logging.info("No AppImages to update.")
         return False
 
     headers = [header.strip() for header in lines[0].strip().strip('|').split('|')]
@@ -950,6 +950,10 @@ def handle_update():
             continue
         app_dict = {headers[i]: entry[i].strip() for i in range(len(headers))}
         installed_apps.append(app_dict)
+
+    if not installed_apps:
+        logging.info("No AppImages to update.")
+        return False
 
     app_names = [app['Application'] for app in installed_apps]
     container_name = create_distrobox_container("update")
@@ -1013,11 +1017,36 @@ def handle_update():
                 logging.warning(f"AppImage file '{appimage_path}' does not exist. Skipping backup.")
 
             success = handle_build(app_name)[1]
-            if not success:
+            if success:
+                appimage_file_new = f"{app_name}-{get_kernel_architecture()}.AppImage"
+                appimage_path_new = os.path.join(applications_dir, appimage_file_new)
+                appimage_checksum = compute_sha512(appimage_path_new)
+                app['Version'] = current_version
+                app['Package Checksum (MD5)'] = current_md5
+                app['AppImage Checksum (SHA512)'] = appimage_checksum
+                logging.info(f"Updated AppImage for '{app_name}' successfully.")
+            else:
                 logging.error(f"Failed to update AppImage for '{app_name}'.")
                 all_success = False
 
     stop_and_remove_container(container_name)
+
+    try:
+        with open(installed_files_path, 'w') as f:
+            header = "| " + " | ".join([headers[i].ljust(len(headers[i])) for i in range(len(headers))]) + " |\n"
+            f.write(header)
+            separator = "|" + "|".join(['-' * (len(headers[i]) + 2) for i in range(len(headers))]) + "|\n"
+            f.write(separator)
+            for app_entry in installed_apps:
+                row = "| " + " | ".join([
+                    app_entry[col].ljust(len(col)) if i in [0, 1, 3] else app_entry[col]
+                    for i, col in enumerate(headers)
+                ]) + " |\n"
+                f.write(row)
+    except IOError as e:
+        logging.error(f"Failed to write updated installed files list: {e}")
+        return False
+
     return all_success
 
 
@@ -1155,22 +1184,22 @@ If you encounter problems with this software, please create an issue.
             if all_success:
                 logging.info("All build processes completed.")
             else:
-                logging.warning("Some build processes failed or were invalid. Check the logs for details.")
+                logging.warning("AppImage(s) build processes failed. Check the logs for details.")
 
         elif args.command == 'remove':
             apps_to_remove = args.apps
             remove_success = handle_remove(apps_to_remove)
             if remove_success:
-                logging.info("Specified AppImage(s) removed successfully.")
+                logging.info("AppImage(s) removed successfully.")
             else:
-                logging.warning("Some AppImage(s) could not be removed. Check the logs for details.")
+                logging.warning("AppImage(s) could not be removed. Check the logs for details.")
 
         elif args.command == 'update':
             update_success = handle_update()
             if update_success:
-                logging.info("All AppImage(s) updated successfully.")
+                logging.info("AppImage(s) updated successfully.")
             else:
-                logging.warning("Some AppImage(s) failed to update. Check the logs for details.")
+                logging.warning("AppImage(s) failed to update. Check the logs for details.")
 
     except Exception as e:
         logging.critical(f"An unexpected error occurred: {e}")
