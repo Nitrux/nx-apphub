@@ -914,6 +914,113 @@ def handle_remove(apps):
     return len(apps_not_found) == 0
 
 
+####################
+# Update function. #
+####################
+
+def handle_update():
+    installed_files_path = os.path.expanduser("~/.local/share/nx-apphub/installed_files")
+    rollbacks_dir = os.path.expanduser("~/.local/share/nx-apphub/rollbacks")
+    os.makedirs(rollbacks_dir, exist_ok=True)
+    applications_dir = os.path.expanduser("~/Applications")
+    apps_to_update = []
+    all_success = True
+
+    if not os.path.exists(installed_files_path):
+        logging.error(f"Installed files list not found at '{installed_files_path}'. Nothing to update.")
+        return False
+
+    try:
+        with open(installed_files_path, 'r') as f:
+            lines = f.readlines()
+    except IOError as e:
+        logging.error(f"Failed to read installed files list: {e}")
+        return False
+
+    if len(lines) < 2:
+        logging.error("Installed files list is empty. Nothing to update.")
+        return False
+
+    headers = [header.strip() for header in lines[0].strip().strip('|').split('|')]
+    data_entries = [line.strip().strip('|').split('|') for line in lines[2:]]
+
+    installed_apps = []
+    for entry in data_entries:
+        if len(entry) != len(headers):
+            continue
+        app_dict = {headers[i]: entry[i].strip() for i in range(len(headers))}
+        installed_apps.append(app_dict)
+
+    app_names = [app['Application'] for app in installed_apps]
+    container_name = create_distrobox_container("update")
+
+    try:
+        run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'apt-cache', 'show'] + app_names
+        )
+    except subprocess.CalledProcessError:
+        logging.error("Failed to retrieve package information for update.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+    try:
+        result = run_distrobox_command([
+            'distrobox', 'enter', '-n', container_name, '--',
+            'apt-cache', 'show'] + app_names
+        )
+    except subprocess.CalledProcessError:
+        logging.error("Failed to retrieve package information for update.")
+        stop_and_remove_container(container_name)
+        sys.exit(1)
+
+    package_info = {}
+    current_app = None
+    for line in result.stdout.splitlines():
+        if line.startswith("Package:"):
+            current_app = line.split(":", 1)[1].strip()
+            package_info[current_app] = {}
+        elif line.startswith("Version:") and current_app:
+            package_info[current_app]['Version'] = line.split(":", 1)[1].strip()
+        elif line.startswith("MD5sum:") and current_app:
+            package_info[current_app]['MD5sum'] = line.split(":", 1)[1].strip()
+
+    for app in installed_apps:
+        app_name = app['Application']
+        installed_version = app['Version']
+        installed_md5 = app['Package Checksum (MD5)']
+        current_version = package_info.get(app_name, {}).get('Version')
+        current_md5 = package_info.get(app_name, {}).get('MD5sum')
+
+        if not current_version or not current_md5:
+            logging.warning(f"Package information for '{app_name}' is incomplete. Skipping update.")
+            continue
+
+        if installed_version != current_version or installed_md5 != current_md5:
+            appimage_file = app['AppImage File']
+            appimage_path = os.path.join(applications_dir, appimage_file)
+            if os.path.exists(appimage_path):
+                try:
+                    os.chmod(appimage_path, 0o644)
+                    backup_path = os.path.join(rollbacks_dir, f"{appimage_file}.bak")
+                    shutil.move(appimage_path, backup_path)
+                    logging.info(f"Moved existing AppImage to rollback: {backup_path}")
+                except OSError as e:
+                    logging.error(f"Failed to backup AppImage '{appimage_path}': {e}")
+                    all_success = False
+                    continue
+            else:
+                logging.warning(f"AppImage file '{appimage_path}' does not exist. Skipping backup.")
+
+            success = handle_build(app_name)[1]
+            if not success:
+                logging.error(f"Failed to update AppImage for '{app_name}'.")
+                all_success = False
+
+    stop_and_remove_container(container_name)
+    return all_success
+
+
 ##################
 # Main function. #
 ##################
@@ -986,12 +1093,27 @@ If you encounter problems with this software, please create an issue.
         help='Logging level {DEBUG,INFO,WARNING,ERROR,CRITICAL} (default: INFO).'
     )
 
+    update_parser = subparsers.add_parser(
+        'update',
+        help='Update all existing AppImage(s).'
+    )
+
+    update_parser.add_argument(
+        '-l', '--log-level',
+        type=str,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default='INFO',
+        help='Logging level {DEBUG,INFO,WARNING,ERROR,CRITICAL} (default: INFO).'
+    )
+
     try:
         args = parser.parse_args()
 
         if args.command == 'install':
             setup_logging(args.log_level)
         elif args.command == 'remove':
+            setup_logging(args.log_level)
+        elif args.command == 'update':
             setup_logging(args.log_level)
 
         check_distrobox_installed()
@@ -1042,6 +1164,13 @@ If you encounter problems with this software, please create an issue.
                 logging.info("Specified AppImage(s) removed successfully.")
             else:
                 logging.warning("Some AppImage(s) could not be removed. Check the logs for details.")
+
+        elif args.command == 'update':
+            update_success = handle_update()
+            if update_success:
+                logging.info("All AppImage(s) updated successfully.")
+            else:
+                logging.warning("Some AppImage(s) failed to update. Check the logs for details.")
 
     except Exception as e:
         logging.critical(f"An unexpected error occurred: {e}")
