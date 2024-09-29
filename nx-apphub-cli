@@ -924,6 +924,7 @@ def handle_update():
     os.makedirs(rollbacks_dir, exist_ok=True)
     applications_dir = os.path.expanduser("~/Applications")
     all_success = True
+    any_updates = False
 
     if not os.path.exists(installed_files_path):
         logging.error(f"Can't list installed applications '{installed_files_path}'.")
@@ -990,6 +991,7 @@ def handle_update():
             continue
 
         if installed_version != current_version or installed_md5 != current_md5:
+            any_updates = True 
             appimage_file = app['AppImage File']
             appimage_path = os.path.join(applications_dir, appimage_file)
             if os.path.exists(appimage_path):
@@ -1023,6 +1025,9 @@ def handle_update():
     try:
         with open(installed_files_path, 'w') as f:
             fixed_lengths = [0, 0, 32, 0, 128] 
+            fixed_lengths = [0, 0, 32, 0, 128] 
+            headers = [header.strip() for header in lines[0].strip().strip('|').split('|')]
+            fixed_lengths = [0, 0, 32, 0, 128]
             headers = [header.strip() for header in lines[0].strip().strip('|').split('|')]
             max_lengths = [len(col) if fixed_lengths[i] == 0 else fixed_lengths[i] for i, col in enumerate(headers)]
             for app_entry in installed_apps:
@@ -1044,7 +1049,10 @@ def handle_update():
         logging.error(f"Failed to write updated installed files list: {e}")
         return False
 
-    return all_success
+    if any_updates:
+        return all_success
+    else:
+        return None
 
 
 ##################
