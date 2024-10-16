@@ -439,7 +439,7 @@ def build_appimage_in_container(container_name, app_name, recipe_path, staging_d
         return False
 
 def create_installed_files_record(app_name, app_version, package_checksum, appimage_file, appimage_checksum):
-    """Updates the installed files record with the new AppImage."""
+    """Updates the installed files record with the new AppImage details."""
     logging.debug("Updating installed files record...")
     columns = ["Application", "Version", "Package Checksum (MD5)", "AppImage File", "AppImage Checksum (SHA512)"]
     new_entry = [app_name, app_version, package_checksum, appimage_file, appimage_checksum]
@@ -498,3 +498,43 @@ def create_installed_files_record(app_name, app_version, package_checksum, appim
         ]) + " |\n"
         f.write(formatted_new_line)
     logging.debug("Installed files record updated.")
+
+def handle_build(app):
+    """Handles the building process for a single application."""
+    app_name = app
+    container_name = None
+    staging_dir = None
+    try:
+        container_name = create_distrobox_container(app_name)
+        install_appimage_builder_in_container(container_name)
+        app_version = get_app_version(container_name, app_name)
+        app_section = get_app_section(container_name, app_name)
+        if app_section == 'metapackages':
+            logging.error(f"Cannot build AppImage for '{app_name}' because it is a metapackage.")
+            return (app_name, False)
+        app_architecture = get_app_architecture(container_name, app_name)
+        exec_path = get_executable_path(container_name, app_name)
+        package_checksum = get_app_checksum(container_name, app_name)
+        kernel_architecture = get_kernel_architecture()
+        staging_dir = create_staging_area(app_name, container_name)
+
+        icon_name = process_icons_and_desktop_files(container_name, app_name, staging_dir, exec_path)
+
+        recipe_path = create_yaml_recipe(
+            app_name, app_version, exec_path,
+            container_name, staging_dir, app_architecture, kernel_architecture, icon_name
+        )
+
+        success = build_appimage_in_container(
+            container_name, app_name, recipe_path, staging_dir, exec_path, kernel_architecture
+        )
+        if success:
+            appimage_dir = APPIMAGE_DIR
+            appimage_file = f"{app_name}-{kernel_architecture}.AppImage"
+            appimage_path = os.path.join(appimage_dir, appimage_file)
+            appimage_checksum = compute_sha512(appimage_path)
+            create_installed_files_record(app_name, app_version, package_checksum, appimage_file, appimage_checksum)
+        return (app_name, success)
+    finally:
+        if container_name and staging_dir:
+            stop_and_remove_container(container_name, staging_dir)

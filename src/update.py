@@ -4,9 +4,9 @@ import os
 import logging
 import shutil
 from .constants import INSTALLED_FILES_PATH, ROLLBACKS_DIR, APPIMAGE_DIR
-from .utils import create_directory, compute_sha512
+from .utils import create_directory, compute_sha512, get_kernel_architecture
 from .container import run_distrobox_command, create_distrobox_container, stop_and_remove_container
-from .build import handle_build, get_kernel_architecture
+from .build import handle_build
 
 def handle_update():
     """Updates all existing AppImages based on the latest package information."""
@@ -100,10 +100,15 @@ def handle_update():
                 all_success = False
                 continue
 
-            success = handle_build(app_name)[1]
+            success_tuple = handle_build(app_name)
+            if len(success_tuple) != 2:
+                logging.error(f"handle_build for '{app_name}' did not return expected tuple.")
+                all_success = False
+                continue
+
+            success = success_tuple[1]
             if success:
-                kernel_architecture = get_kernel_architecture()
-                appimage_file_new = f"{app_name}-{kernel_architecture}.AppImage"
+                appimage_file_new = f"{app_name}-{get_kernel_architecture()}.AppImage"
                 appimage_path_new = os.path.join(applications_dir, appimage_file_new)
                 appimage_checksum = compute_sha512(appimage_path_new)
                 app['Version'] = current_version

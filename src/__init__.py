@@ -3,7 +3,6 @@
 """
 NX Applications Hub Package
 ===========================
-
 NX Applications Hub is a command-line tool developed by Nitrux Latinoamericana S.C. to facilitate
 the creation, management, and updating of AppImages for Nitrux OS. Leveraging Distrobox containers
 and appimage-builder, it ensures that AppImages are built in isolated environments, maintaining system integrity.

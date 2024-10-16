@@ -8,7 +8,7 @@ from .utils import create_directory
 import sys
 
 def handle_remove(apps):
-    """Removes specified AppImages and updates the installed_files record."""
+    """Removes specified AppImages and updates the installed files record."""
     apps_removed = []
     apps_not_found = []
 

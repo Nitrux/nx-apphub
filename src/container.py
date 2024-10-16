@@ -3,9 +3,18 @@
 import subprocess
 import logging
 import sys
+import os
 from .utils import generate_random_id, create_directory, remove_directory
 from .constants import INSTALLATION_PACKAGES
-import os
+
+def check_distrobox_installed():
+    """Verifies that Distrobox is installed."""
+    try:
+        run_distrobox_command(['distrobox', '--version'])
+        logging.debug("Distrobox is installed.")
+    except subprocess.CalledProcessError:
+        logging.error("Error: 'distrobox' is not installed or not found in the host's $PATH.")
+        sys.exit(1)
 
 def run_distrobox_command(cmd):
     """
@@ -34,25 +43,15 @@ def run_distrobox_command(cmd):
         logging.error(f"Command '{' '.join(cmd)}' failed with return code {e.returncode}")
         raise e
 
-def check_distrobox_installed():
-    """Verifies that Distrobox is installed."""
-    try:
-        run_distrobox_command(['distrobox', '--version'])
-        logging.debug("Distrobox is installed.")
-    except subprocess.CalledProcessError:
-        logging.error("Error: 'distrobox' is not installed or not found in the host's $PATH.")
-        sys.exit(1)
-
 def create_distrobox_container(app_name):
-    """Creates a new Distrobox container with necessary packages."""
+    """Creates a new Distrobox container with the specified application name."""
     random_id = generate_random_id()
     container_name = f"{app_name}-{random_id}"
     logging.info(f"Creating Distrobox container: {container_name}...")
     try:
-        additional_packages = ' '.join(INSTALLATION_PACKAGES)
         run_distrobox_command([
             'distrobox', 'create', '-n', container_name, '-i', 'debian:stable',
-            '--additional-packages', additional_packages
+            '--additional-packages', ' '.join(INSTALLATION_PACKAGES)
         ])
         logging.info(f"Container '{container_name}' created and packages installed.")
 
@@ -67,7 +66,7 @@ def create_distrobox_container(app_name):
     return container_name
 
 def stop_and_remove_container(container_name, staging_dir=None):
-    """Stops and removes the specified Distrobox container, along with cleanup."""
+    """Stops and removes the specified Distrobox container, and cleans up related files."""
     logging.info(f"Cleaning up container: {container_name}...")
     try:
         result = run_distrobox_command(['distrobox', 'list'])
