@@ -6,9 +6,10 @@ import shutil
 from .constants import INSTALLED_FILES_PATH, ROLLBACKS_DIR, APPIMAGE_DIR
 from .utils import create_directory, compute_sha512
 from .container import run_distrobox_command, create_distrobox_container, stop_and_remove_container
-from .build import handle_build
+from .build import handle_build, get_kernel_architecture
 
 def handle_update():
+    """Updates all existing AppImages based on the latest package information."""
     installed_files_path = INSTALLED_FILES_PATH
     rollbacks_dir = ROLLBACKS_DIR
     create_directory(rollbacks_dir)
@@ -96,10 +97,13 @@ def handle_update():
                     continue
             else:
                 logging.warning(f"AppImage file '{appimage_path}' does not exist. Skipping backup.")
+                all_success = False
+                continue
 
             success = handle_build(app_name)[1]
             if success:
-                appimage_file_new = f"{app_name}-{get_kernel_architecture()}.AppImage"
+                kernel_architecture = get_kernel_architecture()
+                appimage_file_new = f"{app_name}-{kernel_architecture}.AppImage"
                 appimage_path_new = os.path.join(applications_dir, appimage_file_new)
                 appimage_checksum = compute_sha512(appimage_path_new)
                 app['Version'] = current_version

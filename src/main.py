@@ -5,65 +5,13 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .args import get_parser
 from .logging_setup import setup_logging
-from .container import check_distrobox_installed, stop_and_remove_container
-from .build import (
-    install_appimage_builder_in_container,
-    get_app_section,
-    get_app_architecture,
-    get_app_version,
-    get_app_checksum,
-    get_executable_path,
-    process_icons_and_desktop_files,
-    create_staging_area,
-    create_yaml_recipe,
-    build_appimage_in_container,
-    create_installed_files_record
-)
+from .container import check_distrobox_installed
+from .build import handle_build
 from .remove import handle_remove
 from .update import handle_update
 
-def handle_build(app):
-    app_name = app
-    container_name = None
-    staging_dir = None
-    try:
-        container_name = create_distrobox_container(app_name)
-        install_appimage_builder_in_container(container_name)
-        app_version = get_app_version(container_name, app_name)
-        app_section = get_app_section(container_name, app_name)
-        if app_section == 'metapackages':
-            logging.error(f"Cannot build AppImage for '{app_name}' because it is a metapackage.")
-            return (app_name, False)
-        app_architecture = get_app_architecture(container_name, app_name)
-        exec_path = get_executable_path(container_name, app_name)
-        package_checksum = get_app_checksum(container_name, app_name)
-        # Assuming get_kernel_architecture is now in utils or another module
-        from .utils import get_kernel_architecture
-        kernel_architecture = get_kernel_architecture()
-        staging_dir = create_staging_area(app_name, container_name)
-
-        icon_name = process_icons_and_desktop_files(container_name, app_name, staging_dir, exec_path)
-
-        recipe_path = create_yaml_recipe(
-            app_name, app_version, exec_path,
-            container_name, staging_dir, app_architecture, kernel_architecture, icon_name
-        )
-
-        success = build_appimage_in_container(
-            container_name, app_name, recipe_path, staging_dir, exec_path, kernel_architecture
-        )
-        if success:
-            appimage_dir = os.path.expanduser("~/Applications")
-            appimage_file = f"{app_name}-{kernel_architecture}.AppImage"
-            appimage_path = os.path.join(appimage_dir, appimage_file)
-            appimage_checksum = compute_sha512(appimage_path)
-            create_installed_files_record(app_name, app_version, package_checksum, appimage_file, appimage_checksum)
-        return (app_name, success)
-    finally:
-        if container_name and staging_dir:
-            stop_and_remove_container(container_name, staging_dir)
-
 def main():
+    """Main function to parse arguments and execute commands."""
     parser = get_parser()
     args = parser.parse_args()
 

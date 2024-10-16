@@ -1,8 +1,11 @@
 # nx_apphub/args.py
 
 import argparse
+import sys
+from .constants import DESCRIPTION
 
 class NoChoiceHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Custom formatter to display option strings as comma-separated values."""
     def _format_action_invocation(self, action):
         if not action.option_strings:
             return super()._format_action_invocation(action)
@@ -10,6 +13,7 @@ class NoChoiceHelpFormatter(argparse.RawDescriptionHelpFormatter):
             return ', '.join(action.option_strings)
 
 class CustomArgumentParser(argparse.ArgumentParser):
+    """Custom ArgumentParser to override error handling and help formatting."""
     def __init__(self, *args, **kwargs):
         super(CustomArgumentParser, self).__init__(*args, formatter_class=NoChoiceHelpFormatter, **kwargs)
 
@@ -34,7 +38,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
         return help_text
 
 def get_parser():
-    from .constants import DESCRIPTION
+    """Creates and returns the argument parser."""
     parser = CustomArgumentParser(
         description=DESCRIPTION,
     )

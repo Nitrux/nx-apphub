@@ -1,5 +1,7 @@
 # nx_apphub/constants.py
 
+import os
+
 DESCRIPTION = """
 NX Applications Hub — «Locally built AppImages for Nitrux»
 
@@ -17,9 +19,19 @@ If you encounter problems with this software, please create an issue at https://
 """
 
 INSTALLATION_PACKAGES = [
-    'python3-pip', 'fakeroot', 'libglib2.0-bin', 'squashfs-tools', 'zsync', 'git',
-    'apt-file', 'python3-yaml', 'wget', 'adwaita-icon-theme',
-    'breeze-icon-theme', 'oxygen-icon-theme', 'tango-icon-theme'
+    'python3-pip',
+    'fakeroot',
+    'libglib2.0-bin',
+    'squashfs-tools',
+    'zsync',
+    'git',
+    'apt-file',
+    'python3-yaml',
+    'wget',
+    'adwaita-icon-theme',
+    'breeze-icon-theme',
+    'oxygen-icon-theme',
+    'tango-icon-theme'
 ]
 
 DEFAULT_ICON_URL = 'https://raw.githubusercontent.com/Nitrux/luv-icon-theme/refs/heads/master/Luv/mimetypes/64/application-x-iso9660-appimage.svg'

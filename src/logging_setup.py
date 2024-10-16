@@ -4,6 +4,7 @@ import logging
 import sys
 
 class ColoredFormatter(logging.Formatter):
+    """Custom logging formatter to add colors based on log level."""
     COLOR_CODES = {
         'DEBUG': '\033[94m',     # Blue
         'INFO': '\033[92m',      # Green
@@ -19,6 +20,7 @@ class ColoredFormatter(logging.Formatter):
         return f"{color}{message}{self.RESET_CODE}"
 
 def setup_logging(log_level):
+    """Configures the logging system based on the provided log level."""
     numeric_level = getattr(logging, log_level.upper(), None)
     if not isinstance(numeric_level, int):
         print(f"Invalid log level: {log_level}")

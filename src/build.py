@@ -7,11 +7,52 @@ import os
 import shutil
 import difflib
 import yaml
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from .utils import compute_sha512, create_directory, remove_directory
-from .constants import DEFAULT_ICON_URL, APPIMAGE_DIR, INSTALLED_FILES_PATH
+
+from .container import (
+    run_distrobox_command,
+    stop_and_remove_container,
+    create_distrobox_container
+)
+from .utils import (
+    compute_sha512,
+    create_directory,
+    remove_directory,
+    get_kernel_architecture
+)
+from .constants import (
+    DEFAULT_ICON_URL,
+    APPIMAGE_DIR,
+    INSTALLED_FILES_PATH
+)
+
+##########################
+# YAML Representers       #
+##########################
+
+class QuotedStr(str):
+    """String subclass to enforce single-quoted YAML strings."""
+    pass
+
+def quoted_str_representer(dumper, data):
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data, style="'")
+
+yaml.SafeDumper.add_representer(QuotedStr, quoted_str_representer)
+
+class LiteralStr(str):
+    """String subclass to enforce literal block style YAML strings."""
+    pass
+
+def literal_representer(dumper, data):
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+
+yaml.SafeDumper.add_representer(LiteralStr, literal_representer)
+
+##########################
+# Build Process Functions#
+##########################
 
 def install_appimage_builder_in_container(container_name):
+    """Installs appimage-builder inside the specified container."""
     logging.info(f"Installing appimage-builder in container: '{container_name}'...")
     try:
         run_distrobox_command([
@@ -26,6 +67,7 @@ def install_appimage_builder_in_container(container_name):
         sys.exit(1)
 
 def get_app_section(container_name, app_name):
+    """Retrieves the section of the application using apt-cache show."""
     logging.debug(f"Fetching section for '{app_name}' from container: {container_name}...")
     try:
         result = run_distrobox_command([
@@ -46,6 +88,7 @@ def get_app_section(container_name, app_name):
         sys.exit(1)
 
 def get_app_architecture(container_name, app_name):
+    """Retrieves the architecture of the application using apt-cache show."""
     logging.debug(f"Fetching architecture for '{app_name}' from container: {container_name}'...")
     try:
         result = run_distrobox_command([
@@ -66,6 +109,7 @@ def get_app_architecture(container_name, app_name):
         sys.exit(1)
 
 def get_app_version(container_name, app_name):
+    """Retrieves the version of the application using apt-cache show."""
     logging.debug(f"Fetching version for '{app_name}' from container: {container_name}...")
     try:
         result = run_distrobox_command([
@@ -86,6 +130,7 @@ def get_app_version(container_name, app_name):
         sys.exit(1)
 
 def get_app_checksum(container_name, app_name):
+    """Retrieves the MD5 checksum of the application using apt-cache show."""
     logging.debug(f"Fetching MD5 checksum for '{app_name}' from container: {container_name}...")
     try:
         result = run_distrobox_command([
@@ -106,6 +151,7 @@ def get_app_checksum(container_name, app_name):
         sys.exit(1)
 
 def get_executable_path(container_name, app_name):
+    """Determines the primary executable path of the application."""
     logging.debug(f"Fetching executable path for '{app_name}' from container: {container_name}...")
     try:
         result = run_distrobox_command([
@@ -147,7 +193,7 @@ def get_executable_path(container_name, app_name):
         sys.exit(1)
 
 def process_icons_and_desktop_files(container_name, app_name, staging_dir, exec_path):
-    from .container import run_distrobox_command, stop_and_remove_container
+    """Ensures that the AppImage has the necessary icon and desktop launcher."""
     logging.debug(f"Processing icons and desktop files for '{app_name}'...")
 
     includes_icon = False
@@ -237,7 +283,7 @@ Categories=Utility;
     return icon_name
 
 def create_staging_area(app_name, container_name):
-    from .constants import INSTALLED_FILES_PATH
+    """Creates a staging directory for building the AppImage."""
     staging_dir = f"/tmp/{container_name}"
     try:
         create_directory(staging_dir)
@@ -247,9 +293,7 @@ def create_staging_area(app_name, container_name):
     return staging_dir
 
 def create_yaml_recipe(app_name, app_version, exec_path, container_name, staging_dir, app_architecture, kernel_architecture, icon_name):
-    from .constants import APPIMAGE_DIR
-    import yaml
-
+    """Generates a YAML recipe for appimage-builder."""
     default_dependencies = ['bash', 'dash', app_name]
 
     appimage_builder_dir = os.path.join(staging_dir, f"{app_name}-appimage")
@@ -278,7 +322,7 @@ def create_yaml_recipe(app_name, app_version, exec_path, container_name, staging
             },
             'runtime': {
                 'env': {
-                    'PATH': "'${APPDIR}/usr/bin:${APPDIR}/bin:${APPDIR}/usr/lib/{kernel_architecture}-linux-gnu/libexec/kf5:$PATH'"
+                    'PATH': QuotedStr(f"${{APPDIR}}/usr/bin:${{APPDIR}}/bin:${{APPDIR}}/usr/lib/{kernel_architecture}-linux-gnu/libexec/kf5:$PATH")
                 }
             },
             'after_bundle': [
@@ -289,7 +333,7 @@ def create_yaml_recipe(app_name, app_version, exec_path, container_name, staging
                 'allow_unauthenticated': True,
                 'sources': [
                     {
-                        'sourceline': f"deb [arch={app_architecture}] http://deb.debian.org/debian {repo_codename} main contrib non-free non-free-firmware",
+                        'sourceline': LiteralStr(f"deb [arch={app_architecture}] http://deb.debian.org/debian {repo_codename} main contrib non-free non-free-firmware"),
                         'key_url': 'https://ftp-master.debian.org/keys/archive-key-12.asc'
                     }
                 ],
@@ -336,6 +380,7 @@ def create_yaml_recipe(app_name, app_version, exec_path, container_name, staging
     return recipe_path
 
 def build_appimage_in_container(container_name, app_name, recipe_path, staging_dir, exec_path, kernel_architecture):
+    """Builds the AppImage inside the container and moves it to the Applications directory."""
     try:
         logging.info(f"Building AppImage for '{app_name}' using recipe at '{recipe_path}'...")
 
@@ -394,31 +439,33 @@ def build_appimage_in_container(container_name, app_name, recipe_path, staging_d
         return False
 
 def create_installed_files_record(app_name, app_version, package_checksum, appimage_file, appimage_checksum):
-    from .utils import create_directory
-    create_directory(os.path.dirname(INSTALLED_FILES_PATH))
-    
+    """Updates the installed files record with the new AppImage."""
+    logging.debug("Updating installed files record...")
     columns = ["Application", "Version", "Package Checksum (MD5)", "AppImage File", "AppImage Checksum (SHA512)"]
     new_entry = [app_name, app_version, package_checksum, appimage_file, appimage_checksum]
     fixed_lengths = [0, 0, 32, 0, 128]
 
+    # Check if the installed_files_path exists
     if not os.path.exists(INSTALLED_FILES_PATH) or os.path.getsize(INSTALLED_FILES_PATH) == 0:
         with open(INSTALLED_FILES_PATH, 'w') as f:
             f.write("| " + " | ".join(columns) + " |\n")
             f.write("|" + "|".join(['-' * (len(col)+2) for col in columns]) + "|\n")
 
+    # Read existing entries
     with open(INSTALLED_FILES_PATH, 'r') as f:
         lines = f.readlines()
 
     if len(lines) < 2:
+        # If file is somehow corrupted, reinitialize
         with open(INSTALLED_FILES_PATH, 'w') as f:
             f.write("| " + " | ".join(columns) + " |\n")
             f.write("|" + "|".join(['-' * (len(col)+2) for col in columns]) + "|\n")
         current_columns = columns
         max_lengths = [len(col) for col in columns]
     else:
-        current_columns = lines[0].strip().split('|')[1:-1]
-        data_lines = lines[2:]
-        max_lengths = [len(col.strip()) if fixed_lengths[i] == 0 else fixed_lengths[i] for i, col in enumerate(current_columns)]
+        current_columns = [header.strip() for header in lines[0].strip().strip('|').split('|')]
+        data_lines = [line.strip().strip('|').split('|') for line in lines[2:]]
+        max_lengths = [len(col) if fixed_lengths[i] != 0 else len(col.strip()) for i, col in enumerate(current_columns)]
 
         for line in data_lines:
             parts = line.strip().split('|')[1:-1]
@@ -431,6 +478,7 @@ def create_installed_files_record(app_name, app_version, package_checksum, appim
             if fixed_lengths[i] == 0:
                 max_lengths[i] = max(max_lengths[i], len(item))
 
+    # Write updated table
     header = "| " + " | ".join([columns[i].ljust(max_lengths[i]) for i in range(len(columns))]) + " |\n"
     separator = "|" + "|".join(['-' * (max_lengths[i]+2) for i in range(len(columns))]) + "|\n"
 
@@ -449,3 +497,4 @@ def create_installed_files_record(app_name, app_version, package_checksum, appim
             for i in range(len(new_entry))
         ]) + " |\n"
         f.write(formatted_new_line)
+    logging.debug("Installed files record updated.")
