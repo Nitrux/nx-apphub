@@ -30,39 +30,51 @@ from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.builder import prepare_appimage
 from nx_apphub_cli.manager import install, remove, update, downgrade
 
+
 def main():
-    parser = argparse.ArgumentParser(description="NX AppHub CLI - Convert .deb packages to AppImages")
-    parser.add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
+    parser = argparse.ArgumentParser(description="NX AppHub CLI - Application Manager and AppImage Builder")
+    
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # -- Management commands.
+
+    subparsers.add_parser("install", help="Install an application").add_argument("app_name", type=str, help="Name of the application to install")
+    subparsers.add_parser("remove", help="Remove an installed application").add_argument("app_name", type=str, help="Name of the application to remove")
+    subparsers.add_parser("update", help="Update an installed application").add_argument("app_name", type=str, help="Name of the application to update")
+    subparsers.add_parser("downgrade", help="Downgrade an installed application").add_argument("app_name", type=str, help="Name of the application to downgrade")
+
+    # -- Building command (requires YAML file).
+
+    subparsers.add_parser("build", help="Build an AppImage from a YAML file").add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
+
     args = parser.parse_args()
 
-    # -- Load configuration file.
+    if args.command == "install":
+        install(args.app_name)
+    elif args.command == "remove":
+        remove(args.app_name)
+    elif args.command == "update":
+        update(args.app_name)
+    elif args.command == "downgrade":
+        downgrade(args.app_name)
+    elif args.command == "build":
+        config = load_yaml_config(args.config)
+        package_name = config["buildinfo"]["name"]
 
-    config = load_yaml_config(args.config)
+        setup_directories(package_name)
 
-    # -- Get package name.
+        dependencies = config["buildinfo"].get("deps", [])
+        repos = config["buildinfo"].get("distrorepo", [])
 
-    package_name = config["buildinfo"]["name"]
+        for dep in dependencies:
+            deb_path = get_latest_deb(dep, repos, package_name)
+            extract_deb(deb_path, package_name)
 
-    # -- Ensure necessary directories exist.
-
-    setup_directories(package_name)
-
-    # -- Get dependencies list (default to empty list if missing).
-
-    dependencies = config["buildinfo"].get("deps", [])
-
-    # -- Get list of repositories (default to empty list if missing).
-
-    repos = config["buildinfo"].get("distrorepo", [])
-
-    for dep in dependencies:
-        deb_path = get_latest_deb(dep, repos, package_name)
-        extract_deb(deb_path, package_name)
-
-    # -- Build the AppImage.
-
-    prepare_appimage(config)
-    print("AppImage creation complete!")
+        prepare_appimage(config)
+        print("AppImage creation complete!")
+    else:
+        parser.print_help()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
