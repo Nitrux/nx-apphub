@@ -27,6 +27,8 @@ import shutil
 import subprocess
 import yaml
 from pathlib import Path
+from .downloader import get_latest_deb
+from .extractor import extract_deb
 from .builder import prepare_appimage
 from .config import load_yaml_config
 
@@ -34,6 +36,7 @@ from .config import load_yaml_config
 # -- Base directories.
 
 repo_base_dir = Path.home() / ".local/share/nx-apphub-cli"
+apps_dir = repo_base_dir / "apps"
 git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
 
 
@@ -46,24 +49,34 @@ def install(app_name):
     """Fetch YAML metadata, build AppImage, and store metadata."""
     print(f"Installing {app_name}...")
 
-    # -- Clone or update repo to get the latest metadata.
-
     repo_dir = repo_base_dir / "apps"
-    if repo_dir.exists():
-        subprocess.run(["git", "-C", str(repo_dir), "pull"], check=True)
+
+    # -- Clone repository if it doesn't exist.
+
+    if not (repo_base_dir / ".git").exists():
+        print("Cloning repository...")
+        subprocess.run(["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)], check=True)
     else:
-        subprocess.run(["git", "clone", git_repo_url, str(repo_dir)], check=True)
+        print("Updating repository...")
+        subprocess.run(["git", "-C", str(repo_base_dir), "pull"], check=True)
 
-    # -- Locate the YAML file.
+    # -- Validate if app YAML exists.
 
-    app_yaml = repo_dir / app_name / "app.yml"
-    if not app_yaml.exists():
+    app_yaml_path = repo_dir / app_name / "app.yml"
+    if not app_yaml_path.exists():
         print(f"Error: No YAML found for {app_name} in repository.")
         return
 
-    # -- Load YAML and build the AppImage.
+    # -- Load YAML and process dependencies.
 
-    config = load_yaml_config(app_yaml)
+    config = load_yaml_config(app_yaml_path)
+
+    for dep in config["buildinfo"].get("deps", []):
+        deb_path = get_latest_deb(dep, config["buildinfo"]["distrorepo"], app_name)
+        extract_deb(deb_path, app_name)
+
+    # -- Build the AppImage.
+
     prepare_appimage(config)
     print(f"Installation of {app_name} completed!")
 
@@ -79,7 +92,7 @@ def remove(app_name):
     else:
         print(f"AppBox for {app_name} not found.")
 
-    metadata_dir = repo_base_dir / "apps" / app_name
+    metadata_dir = apps_dir / app_name
     if metadata_dir.exists():
         shutil.rmtree(metadata_dir, ignore_errors=True)
         print(f"Removed metadata for {app_name}")
@@ -92,14 +105,25 @@ def update(app_name):
     print(f"Updating {app_name}...")
 
     app_file = repo_base_dir / f"{app_name}.AppBox"
-    zsync_url = f"https://example.com/{app_name}.zsync"  # Placeholder URL
-
     if not app_file.exists():
         print(f"Error: {app_name} is not installed.")
         return
 
-    # -- Run zsync update.
+    # -- Load metadata and get update URL.
 
+    app_yaml_path = apps_dir / app_name / "app.yml"
+    if not app_yaml_path.exists():
+        print(f"Error: No YAML metadata found for {app_name}. Cannot update.")
+        return
+
+    config = load_yaml_config(app_yaml_path)
+    zsync_url = config["buildinfo"].get("update_url", "")
+
+    if not zsync_url:
+        print(f"Error: No update URL specified for {app_name}.")
+        return
+
+    # -- Run zsync update.
     try:
         subprocess.run(["zsync", "-i", str(app_file), zsync_url], check=True)
         print(f"{app_name} updated successfully!")
@@ -113,19 +137,23 @@ def downgrade(app_name):
 
     backup_file = repo_base_dir / f"{app_name}.zst"
     app_file = repo_base_dir / f"{app_name}.AppBox"
+    temp_file = repo_base_dir / f"{app_name}.AppBox.tmp"
 
     if not backup_file.exists():
         print(f"No downgrade backup found for {app_name}.")
         return
 
-    # -- Decompress the backup.
-
+    # -- Decompress the backup into a temporary file.
     try:
-        subprocess.run(["zstd", "--decompress", str(backup_file), "-o", str(app_file)], check=True)
+        subprocess.run(["zstd", "--decompress", str(backup_file), "-o", str(temp_file)], check=True)
+        shutil.move(str(temp_file), str(app_file))
         print(f"{app_name} downgraded successfully!")
     except subprocess.CalledProcessError:
         print(f"Error downgrading {app_name}.")
+        if temp_file.exists():
+            temp_file.unlink()  # Cleanup failed temp file
 
 
-# -- Export functions
+# -- Export functions.
+
 __all__ = ["install", "remove", "update", "downgrade"]
