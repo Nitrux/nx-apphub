@@ -32,23 +32,20 @@ from pathlib import Path
 
 cache_dir = Path.home() / ".cache/nx-apphub-cli"
 
-# -- Setup package-specific directories.
-
-def setup_directories(package_name):
-    package_dir = cache_dir / package_name
-    app_dir = package_dir / "AppDir"
-    deb_dir = package_dir / "debs"
-
-    for directory in [app_dir, deb_dir]:
-        directory.mkdir(parents=True, exist_ok=True)
-
 
 # -- Load YAML configuration.
 
 def load_yaml_config(config_path):
     try:
         with open(config_path, "r") as f:
-            return yaml.safe_load(f)
+            data = yaml.safe_load(f)
+
+        if not data:
+            print(f"Error: {config_path} is empty or invalid.")
+            sys.exit(1)
+
+        return data
+
     except yaml.YAMLError as e:
         print(f"YAML Parsing Error: {e}")
         sys.exit(1)
