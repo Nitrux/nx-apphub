@@ -50,10 +50,7 @@ def get_latest_deb(pkg_name, repos, package_name):
 
         # -- Construct repo URL for the package.
 
-        if distro == "ubuntu":
-            repo_url = f"https://packages.ubuntu.com/{release}/{arch}/{pkg_name}/download"
-        else:
-            repo_url = f"https://packages.debian.org/{release}/{arch}/{pkg_name}/download"
+        repo_url = f"https://packages.{distro}.org/{release}/{arch}/{pkg_name}/download"
 
         print(f"Checking repository: {repo_url}")
 
@@ -66,7 +63,8 @@ def get_latest_deb(pkg_name, repos, package_name):
                 print(f"Warning: No .deb URL found for {pkg_name} in {repo_url}")
                 continue
 
-            # Download .deb package
+            # -- Download .deb package.
+
             deb_path = deb_dir / f"{pkg_name}.deb"
             download_file(deb_url, deb_path)
             return deb_path
@@ -92,6 +90,8 @@ def download_file(url, dest):
     try:
         response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
 
         with open(dest, "wb") as f:
             for chunk in response.iter_content(1024):
