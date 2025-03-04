@@ -50,33 +50,47 @@ def extract_deb(deb_path, package_name):
     print(f"Extracting {deb_path} to {app_dir}...")
 
     try:
-        # -- Extract .deb using `ar` and `tar`.
+        # -- Extract control, data, and metadata from the .deb package.
 
         subprocess.run(["ar", "x", deb_path], cwd=temp_dir, check=True)
 
-        # -- Determine if data archive is `data.tar.xz` or `data.tar.gz`.
+        # -- Detect the correct data archive file.
 
-        if (temp_dir / "data.tar.xz").exists():
-            data_archive = "data.tar.xz"
-        elif (temp_dir / "data.tar.gz").exists():
-            data_archive = "data.tar.gz"
-        else:
+        archive_files = list(temp_dir.glob("data.tar.*"))
+        if not archive_files:
             print(f"Error: No valid data archive found in {deb_path}.")
             return
 
-        subprocess.run(["tar", "xf", data_archive, "-C", str(app_dir)], cwd=temp_dir, check=True)
+        # -- Extract the correct data archive.
+
+        data_archive = archive_files[0]
+
+        if data_archive.suffix == ".xz":
+            subprocess.run(["tar", "xf", str(data_archive), "-C", str(app_dir)], check=True)
+        elif data_archive.suffix == ".gz":
+            subprocess.run(["tar", "xzf", str(data_archive), "-C", str(app_dir)], check=True)
+        elif data_archive.suffix == ".zst":
+            decompressed_archive = temp_dir / "data.tar"
+            subprocess.run(["unzstd", "-d", str(data_archive), "-o", str(decompressed_archive)], check=True)
+            subprocess.run(["tar", "xf", str(decompressed_archive), "-C", str(app_dir)], check=True)
+        else:
+            print(f"Error: Unsupported archive format in {deb_path}.")
+            return
 
         print(f"Successfully extracted {deb_path} to {app_dir}")
 
-        # -- Ensure that libraries are correctly moved.
+        # -- Ensure that libraries are correctly moved without overwriting existing ones.
 
         lib_dir = app_dir / "usr/lib/"
         lib_dir.mkdir(parents=True, exist_ok=True)
 
         for extracted_file in (app_dir / "lib").glob("*.so*"):
-            shutil.move(str(extracted_file), str(lib_dir))
-
-        print(f"Moved libraries to {lib_dir}")
+            target_file = lib_dir / extracted_file.name
+            if not target_file.exists():
+                shutil.move(str(extracted_file), str(target_file))
+                print(f"Moved {extracted_file} → {target_file}")
+            else:
+                print(f"Skipping {extracted_file}: already exists in {lib_dir}")
 
     except subprocess.CalledProcessError as e:
         print(f"Extraction failed: {e}")
