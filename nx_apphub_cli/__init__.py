@@ -37,4 +37,8 @@ __all__ = [
     "get_latest_deb",
     "extract_deb",
     "prepare_appimage",
+    "install",
+    "remove",
+    "update",
+    "downgrade",
 ]
