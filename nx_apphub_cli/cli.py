@@ -27,7 +27,8 @@ import argparse
 from nx_apphub_cli.config import load_yaml_config, setup_directories
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
-from nx_apphub_cli.appimage import prepare_appimage
+from nx_apphub_cli.builder import prepare_appimage
+from nx_apphub_cli.manager import install, remove, update, downgrade
 
 def main():
     parser = argparse.ArgumentParser(description="NX AppHub CLI - Convert .deb packages to AppImages")

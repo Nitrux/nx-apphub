@@ -187,6 +187,8 @@ def prepare_appimage(config):
     bin_dir = app_dir / "usr/bin"
     deb_dir = package_dir / "debs"
 
+    # -- Rename the AppImages built with nx-apphub-cli to AppBox to differentiate them from user-added AppImages.
+
     output_path = Path.cwd() / f"{app_name}.AppBox"
 
     binary_path = config['buildinfo']['binarypath']
@@ -286,6 +288,12 @@ Icon={app_name}
     try:
         subprocess.run([str(appimagetool_path), str(app_dir), str(output_path)], check=True)
         print("AppImage built successfully!")
+
+        # -- Rename to .AppBox after creation.
+
+        final_path = output_path.with_suffix(".AppBox")
+        shutil.move(output_path, final_path)
+        print(f"Renamed output to {final_path}")
 
         # -- Cleanup after successful build.
 
