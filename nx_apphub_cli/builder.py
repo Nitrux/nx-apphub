@@ -28,7 +28,7 @@ from pathlib import Path
 import shutil
 import platform
 import requests
-from nx_apphub_cli.utils import ensure_appimagetool, clean_cache
+from nx_apphub_cli.utils import ensure_appimagetool, cleanup_cache
 
 
 # -- Base working directory for all packages.
