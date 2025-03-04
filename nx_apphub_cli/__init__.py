@@ -23,20 +23,20 @@
 #############################################################################################################################################################################
 
 from .cli import main
-from .config import load_yaml_config, setup_directories
+from .config import load_yaml_config
 from .downloader import get_latest_deb
 from .extractor import extract_deb
-from .builder import prepare_appimage
+from .builder import prepare_appimage, setup_appimage_directories
 from .utils import ensure_executable, clean_cache
 from .manager import install, remove, update, downgrade
 
 __all__ = [
     "main",
     "load_yaml_config",
-    "setup_directories",
     "get_latest_deb",
     "extract_deb",
     "prepare_appimage",
+    "setup_appimage_directories",
     "install",
     "remove",
     "update",
