@@ -56,16 +56,6 @@ def find_system_icon(icon_name, preferred_theme=None):
     return None
 
 
-def get_architecture():
-    """Return the system architecture for downloading the correct AppImageTool version."""
-    arch_map = {
-        "x86_64": "x86_64",
-        "aarch64": "aarch64",
-        "arm64": "aarch64",
-    }
-    return arch_map.get(platform.machine(), "x86_64")
-
-
 def generate_apprun(app_dir, exec_path):
     """Generate the AppRun script dynamically inside the AppImage."""
     apprun_path = app_dir / "AppRun"
