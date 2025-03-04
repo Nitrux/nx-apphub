@@ -26,7 +26,6 @@ import os
 import shutil
 import requests
 from pathlib import Path
-from .builder import get_architecture 
 
 
 # -- Define base directories.
@@ -43,25 +42,30 @@ def ensure_executable(path):
     os.chmod(path, 0o755)
 
 
-def clean_cache():
-    """Clean up the cache directory."""
+def get_architecture():
+    """Return the system architecture for downloading the correct AppImageTool version."""
+    arch_map = {
+        "x86_64": "x86_64",
+        "aarch64": "aarch64",
+        "arm64": "aarch64",
+    }
+    return arch_map.get(platform.machine(), "x86_64")
+
+
+def cleanup_cache(package_name=None):
+    """Remove the cache directory for a specific package or the entire cache."""
     cache_dir = Path.home() / ".cache/nx-apphub-cli"
-    if cache_dir.exists():
-        for item in cache_dir.iterdir():
-            if item.is_file():
-                item.unlink()
-            elif item.is_dir():
-                shutil.rmtree(item, ignore_errors=True)
-    print("Cache cleaned.")
 
-
-def cleanup_cache(package_name):
-    """Remove the entire package cache directory after building the AppImage."""
-    package_dir = app_base_dir / package_name
-    if package_dir.exists():
-        print(f"Cleaning up cache directory for {package_name}...")
-        shutil.rmtree(package_dir, ignore_errors=True)
-        print(f"Cache directory for {package_name} removed.")
+    if package_name:
+        target_dir = cache_dir / package_name
+        if target_dir.exists():
+            print(f"Cleaning up cache directory for {package_name}...")
+            shutil.rmtree(target_dir, ignore_errors=True)
+            print(f"Cache directory for {package_name} removed.")
+    else:
+        print("Cleaning entire NX AppHub cache...")
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        print("Full cache cleanup complete.")
 
 
 def ensure_appimagetool():
