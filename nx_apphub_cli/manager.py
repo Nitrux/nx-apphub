@@ -31,6 +31,7 @@ from .downloader import get_latest_deb
 from .extractor import extract_deb
 from .builder import prepare_appimage
 from .config import load_yaml_config
+from .utils import cleanup_cache
 
 
 # -- Base directories.
@@ -43,6 +44,7 @@ git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
 # -- Ensure base directories exist.
 
 repo_base_dir.mkdir(parents=True, exist_ok=True)
+apps_dir.mkdir(parents=True, exist_ok=True)
 
 
 def install(app_name):
@@ -51,7 +53,13 @@ def install(app_name):
 
     repo_dir = repo_base_dir / "apps"
 
-    # -- Clone repository if it doesn't exist.
+    # -- If repo exists but isn't valid, remove & re-clone.
+
+    if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
+        print(f"Warning: {repo_base_dir} exists but is not a valid Git repository. Removing...")
+        shutil.rmtree(repo_base_dir)
+    
+    # -- Clone repository if missing.
 
     if not (repo_base_dir / ".git").exists():
         print("Cloning repository...")
@@ -60,7 +68,10 @@ def install(app_name):
         print("Updating repository...")
         subprocess.run(["git", "-C", str(repo_base_dir), "pull"], check=True)
 
-    # -- Validate if app YAML exists.
+    if not apps_dir.exists():
+        apps_dir.mkdir(parents=True, exist_ok=True)
+
+    # -- Validate YAML existence.
 
     app_yaml_path = repo_dir / app_name / "app.yml"
     if not app_yaml_path.exists():
@@ -81,21 +92,40 @@ def install(app_name):
     print(f"Installation of {app_name} completed!")
 
 
+
 def remove(app_name):
-    """Remove the installed AppBox and metadata."""
+    """Remove the installed AppBox and metadata safely."""
     print(f"Removing {app_name}...")
 
     app_file = repo_base_dir / f"{app_name}.AppBox"
+    metadata_dir = apps_dir / app_name
+
+    # -- Check if AppBox exists before removing.
+
     if app_file.exists():
-        app_file.unlink()
-        print(f"Removed {app_file}")
+        try:
+            app_file.unlink()
+            print(f"Removed {app_file}")
+        except PermissionError:
+            print(f"Error: Cannot remove {app_file}. Is it in use?")
+            return
     else:
         print(f"AppBox for {app_name} not found.")
 
-    metadata_dir = apps_dir / app_name
+    # -- Ensure metadata directory is removed safely.
+
     if metadata_dir.exists():
-        shutil.rmtree(metadata_dir, ignore_errors=True)
-        print(f"Removed metadata for {app_name}")
+        try:
+            shutil.rmtree(metadata_dir)
+            print(f"Metadata for {app_name} removed.")
+        except PermissionError:
+            print(f"Error: Cannot remove metadata for {app_name}.")
+    else:
+        print(f"Metadata for {app_name} not found.")
+
+    # -- Clean up cache for this app only.
+
+    cleanup_cache(app_name)
 
     print(f"{app_name} has been successfully removed.")
 

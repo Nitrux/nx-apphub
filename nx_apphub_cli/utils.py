@@ -63,9 +63,7 @@ def cleanup_cache(package_name=None):
             shutil.rmtree(target_dir, ignore_errors=True)
             print(f"Cache directory for {package_name} removed.")
     else:
-        print("Cleaning entire NX AppHub cache...")
-        shutil.rmtree(cache_dir, ignore_errors=True)
-        print("Full cache cleanup complete.")
+        print("Skipping full cache cleanup. Only removing package-specific cache.")
 
 
 def ensure_appimagetool():
