@@ -187,7 +187,7 @@ def prepare_appimage(config):
     bin_dir = app_dir / "usr/bin"
     deb_dir = package_dir / "debs"
 
-    output_path = Path.home() / f"{app_name}.AppImage"
+    output_path = Path.cwd() / f"{app_name}.AppBox"
 
     binary_path = config['buildinfo']['binarypath']
     desktop_path = config['buildinfo'].get('desktoppath', None)
