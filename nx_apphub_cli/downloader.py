@@ -32,9 +32,28 @@ import sys
 
 cache_dir = Path.home() / ".cache/nx-apphub-cli"
 
-def get_latest_deb(pkg_name, repos, package_name):
-    """Download the latest .deb package for the given pkg_name from a list of repos."""
+import requests
+import gzip
+import re
+from pathlib import Path
 
+cache_dir = Path.home() / ".cache/nx-apphub-cli"
+
+debian_mirrors = [
+    "http://ftp.debian.org/debian",
+    "http://ftp.uk.debian.org/debian",
+    "http://ftp.us.debian.org/debian",
+    "http://ftp.de.debian.org/debian",
+]
+
+ubuntu_mirrors = [
+    "http://archive.ubuntu.com/ubuntu",
+    "http://security.ubuntu.com/ubuntu",
+]
+
+def get_latest_deb(pkg_name, repos, package_name):
+    """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
+    
     package_dir = cache_dir / package_name
     deb_dir = package_dir / "debs"
     deb_dir.mkdir(parents=True, exist_ok=True)
@@ -48,39 +67,41 @@ def get_latest_deb(pkg_name, repos, package_name):
             print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu.")
             continue
 
-        # -- Construct repo URL for the package.
+        mirror_list = debian_mirrors if distro == "debian" else ubuntu_mirrors
 
-        repo_url = f"https://packages.{distro}.org/{release}/{arch}/{pkg_name}/download"
-
-        print(f"Checking repository: {repo_url}")
-
-        try:
-            response = requests.get(repo_url, timeout=10)
-            response.raise_for_status()
-
-            deb_url = extract_deb_url(response.text)
-            if not deb_url:
-                print(f"Warning: No .deb URL found for {pkg_name} in {repo_url}")
-                continue
-
-            # -- Download .deb package.
-
-            deb_path = deb_dir / f"{pkg_name}.deb"
-            download_file(deb_url, deb_path)
-            return deb_path
-
-        except requests.RequestException as e:
-            print(f"Error accessing {repo_url}: {e}")
-            continue
+        for mirror in mirror_list:
+            pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name)
+            if pkg_info:
+                deb_url = f"{mirror}/{pkg_info}"
+                return download_file(deb_url, deb_dir / f"{pkg_name}.deb")
 
     print(f"Failed to find package: {pkg_name} in any repository.")
     sys.exit(1)
 
 
-def extract_deb_url(html):
-    """Extracts the .deb download URL from the HTML page."""
-    match = re.search(r'"(https?://[^"]+\.deb)"', html)
-    return match.group(1) if match else None
+def fetch_package_metadata(mirror, release, arch, pkg_name):
+    """Fetches the latest package path from Packages.gz metadata."""
+    packages_url = f"{mirror}/dists/{release}/main/binary-{arch}/Packages.gz"
+
+    try:
+        response = requests.get(packages_url, timeout=10, stream=True)
+        response.raise_for_status()
+
+        with gzip.open(response.raw, "rt") as f:
+            packages_data = f.read()
+
+        # -- Extract the package filename from metadata.
+
+        pkg_regex = rf"^Package: {pkg_name}\n(?:.*\n)*?^Filename: (\S+)"
+        match = re.search(pkg_regex, packages_data, re.MULTILINE)
+
+        if match:
+            return match.group(1)
+
+    except requests.RequestException as e:
+        print(f"Error fetching metadata from {packages_url}: {e}")
+
+    return None
 
 
 def download_file(url, dest):
@@ -98,6 +119,7 @@ def download_file(url, dest):
                 f.write(chunk)
 
         print(f"Successfully downloaded {dest}")
+        return dest
 
     except requests.RequestException as e:
         print(f"Error downloading {url}: {e}")
