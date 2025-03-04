@@ -28,6 +28,7 @@ from pathlib import Path
 import shutil
 import platform
 import requests
+from nx_apphub_cli.utils import ensure_appimagetool, clean_cache
 
 
 # -- Base working directory for all packages.
@@ -200,6 +201,9 @@ def build_appimage(app_name, app_dir):
         subprocess.run([str(appimagetool_path), str(app_dir), str(output_path)], check=True)
         shutil.move(output_path, final_path)
         print(f"Renamed output to {final_path}")
+
+        cleanup_cache(app_name)
+
     except subprocess.CalledProcessError as e:
         print(f"Error: AppImage build failed! {e}")
         exit(1)
