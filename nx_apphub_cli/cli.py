@@ -52,7 +52,7 @@ def main():
 
     # -- Building command (requires YAML file).
 
-    subparser_build = add_parser("build", help="Build an AppImage from a YAML file")
+    subparser_build = subparsers.add_parser("build", help="Build an AppImage from a YAML file")
     subparser_build.add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
 
     args = parser.parse_args()
@@ -60,8 +60,6 @@ def main():
     if not args.command:
         parser.print_help()
         sys.exit(1)
-
-    args = parser.parse_args()
 
     if args.command == "install":
         install(args.app_name)
