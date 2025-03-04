@@ -23,7 +23,17 @@
 #############################################################################################################################################################################
 
 import os
+import shutil
+import requests
 from pathlib import Path
+from .builder import get_architecture 
+
+
+# -- Define base directories.
+
+app_base_dir = Path.home() / ".cache/nx-apphub-cli"
+local_bin = Path.home() / ".local/bin"
+appimagetool_path = local_bin / "appimagetool"
 
 
 # -- Utility functions.
@@ -31,6 +41,7 @@ from pathlib import Path
 def ensure_executable(path):
     """Ensure a file is executable."""
     os.chmod(path, 0o755)
+
 
 def clean_cache():
     """Clean up the cache directory."""
@@ -40,7 +51,41 @@ def clean_cache():
             if item.is_file():
                 item.unlink()
             elif item.is_dir():
-                for sub_item in item.iterdir():
-                    sub_item.unlink()
-                item.rmdir()
+                shutil.rmtree(item, ignore_errors=True)
     print("Cache cleaned.")
+
+
+def cleanup_cache(package_name):
+    """Remove the entire package cache directory after building the AppImage."""
+    package_dir = app_base_dir / package_name
+    if package_dir.exists():
+        print(f"Cleaning up cache directory for {package_name}...")
+        shutil.rmtree(package_dir, ignore_errors=True)
+        print(f"Cache directory for {package_name} removed.")
+
+
+def ensure_appimagetool():
+    """Ensure appimagetool is available by downloading it if missing."""
+    if not appimagetool_path.exists():
+        print("appimagetool not found! Downloading from GitHub...")
+        local_bin.mkdir(parents=True, exist_ok=True)
+
+        # -- Detect system architecture and download the correct executable.
+
+        arch = get_architecture()
+        tool_url = f"https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-{arch}.AppImage"
+
+        try:
+            response = requests.get(tool_url, stream=True, timeout=20)
+            response.raise_for_status()
+
+            with open(appimagetool_path, "wb") as tool_file:
+                for chunk in response.iter_content(1024):
+                    tool_file.write(chunk)
+
+            appimagetool_path.chmod(0o755)
+            print(f"appimagetool downloaded and saved to {appimagetool_path}")
+
+        except requests.RequestException as e:
+            print(f"Error downloading appimagetool: {e}")
+            exit(1)
