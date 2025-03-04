@@ -27,7 +27,7 @@ from .config import load_yaml_config
 from .downloader import get_latest_deb
 from .extractor import extract_deb
 from .builder import prepare_appimage, setup_appimage_directories
-from .utils import ensure_executable, clean_cache
+from .utils import ensure_executable, cleanup_cache
 from .manager import install, remove, update, downgrade
 
 __all__ = [
