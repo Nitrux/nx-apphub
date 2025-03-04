@@ -24,10 +24,10 @@
 
 import sys
 import argparse
-from nx_apphub_cli.config import load_yaml_config, setup_directories
+from nx_apphub_cli.config import load_yaml_config
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
-from nx_apphub_cli.builder import prepare_appimage
+from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
 from nx_apphub_cli.manager import install, remove, update, downgrade
 
 
@@ -38,14 +38,28 @@ def main():
 
     # -- Management commands.
 
-    subparsers.add_parser("install", help="Install an application").add_argument("app_name", type=str, help="Name of the application to install")
-    subparsers.add_parser("remove", help="Remove an installed application").add_argument("app_name", type=str, help="Name of the application to remove")
-    subparsers.add_parser("update", help="Update an installed application").add_argument("app_name", type=str, help="Name of the application to update")
-    subparsers.add_parser("downgrade", help="Downgrade an installed application").add_argument("app_name", type=str, help="Name of the application to downgrade")
+    subparser_install = subparsers.add_parser("install", help="Install an application")
+    subparser_install.add_argument("app_name", type=str, help="Name of the application to install")
+
+    subparser_remove = subparsers.add_parser("remove", help="Remove an installed application")
+    subparser_remove.add_argument("app_name", type=str, help="Name of the application to remove")
+
+    subparser_update = subparsers.add_parser("update", help="Update an installed application")
+    subparser_update.add_argument("app_name", type=str, help="Name of the application to update")
+
+    subparser_downgrade = subparsers.add_parser("downgrade", help="Downgrade an installed application")
+    subparser_downgrade.add_argument("app_name", type=str, help="Name of the application to downgrade")
 
     # -- Building command (requires YAML file).
 
-    subparsers.add_parser("build", help="Build an AppImage from a YAML file").add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
+    subparser_build = add_parser("build", help="Build an AppImage from a YAML file")
+    subparser_build.add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
 
     args = parser.parse_args()
 
@@ -61,7 +75,7 @@ def main():
         config = load_yaml_config(args.config)
         package_name = config["buildinfo"]["name"]
 
-        setup_directories(package_name)
+        setup_appimage_directories(package_name, config["buildinfo"]["binarypath"])
 
         dependencies = config["buildinfo"].get("deps", [])
         repos = config["buildinfo"].get("distrorepo", [])
