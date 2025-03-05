@@ -66,7 +66,7 @@ def install(app_name):
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
         print(f"Warning: {repo_base_dir} exists but is not a valid Git repository. Removing...")
         shutil.rmtree(repo_base_dir)
-    
+
     # -- Clone repository if missing.
 
     if not (repo_base_dir / ".git").exists():
@@ -86,6 +86,14 @@ def install(app_name):
         print(f"Error: No YAML found for {app_name} in repository.")
         return
 
+    # -- Check if the AppBox already exists **before doing any work**.
+
+    appbox_path = install_dir / f"{app_name}.AppBox"
+
+    if appbox_path.exists():
+        print(f"Skipping installation: {app_name} is already installed.")
+        return
+
     # -- Load YAML and process dependencies.
 
     config = load_yaml_config(app_yaml_path)
@@ -99,25 +107,12 @@ def install(app_name):
     prepare_appimage(config, install_mode=True)
     print(f"Installation of {app_name} completed!")
 
-    # -- Verify the new AppBox exists **before** deleting the old one.
-    
+    # -- Verify the new AppBox exists **before moving it**.
+
     built_appbox = Path.cwd() / f"{app_name}.AppBox"
     if not built_appbox.exists():
         print(f"Error: Failed to find the built {app_name}.AppBox file. Aborting installation.")
         return
-
-    appbox_path = install_dir / f"{app_name}.AppBox"
-
-    # -- Ask user for overwrite confirmation if the AppBox already exists.
-    
-    if appbox_path.exists():
-        user_confirm = input(f"Warning: {app_name} is already installed. Overwrite? (y/N): ").strip().lower()
-        if user_confirm not in ("y", "yes"):
-            print(f"Skipped reinstallation of {app_name}.")
-            return
-        appbox_path.unlink()
-
-    # -- Move the new AppBox to the install directory.
 
     shutil.move(str(built_appbox), str(appbox_path))
     print(f"Installed {app_name} to {appbox_path}")
