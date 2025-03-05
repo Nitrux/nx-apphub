@@ -97,19 +97,26 @@ def generate_apprun(app_dir, exec_path):
 #    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
 #############################################################################################################################################################################
 
+
 # -- Exit on errors.
+
 set -eu
 
+
 # -- Get the running directory of the AppImage.
+
 realpath=$(readlink -f "$0")
 running_dir=$(dirname "$realpath")
 
+
 # -- Set environment variables for proper execution inside the AppImage.
+
 export PATH="$running_dir/usr/bin:$running_dir/usr/sbin:$running_dir/usr/games:$running_dir/bin:$running_dir/sbin:$PATH"
 export LD_LIBRARY_PATH="${{LD_LIBRARY_PATH:-}}:$running_dir/usr/lib:$running_dir/usr/lib/x86_64-linux-gnu:$running_dir/lib"
 export XDG_DATA_DIRS="${{XDG_DATA_DIRS:-}}:$running_dir/usr/share"
 export GSETTINGS_SCHEMA_DIR="${{GSETTINGS_SCHEMA_DIR:-}}:$running_dir/usr/share/glib-2.0/schemas"
 export QT_PLUGIN_PATH="${{QT_PLUGIN_PATH:-}}:$running_dir/usr/lib/qt5/plugins"
+
 
 # -- Run the application.
 exec "$running_dir/{exec_path}" "$@"
@@ -181,8 +188,8 @@ def copy_system_icon(app_name, app_dir, icon_path):
             print(f"Copied provided icon to {icon_dest}")
             return
 
-    print(f"No provided icon for {app_name}. Searching for system icon: utilities-terminal")
-    system_icon = find_system_icon("utilities-terminal")
+    print(f"No provided icon for {app_name}. Searching for a fallback system icon...")
+    system_icon = find_system_icon(app_name) or find_system_icon("utilities-terminal")
     if system_icon:
         shutil.copy(system_icon, icon_dest)
         print(f"Copied system icon to {icon_dest}")
@@ -190,16 +197,14 @@ def copy_system_icon(app_name, app_dir, icon_path):
         print("Warning: No system icon found! AppImage might fail to build.")
 
 
-def build_appimage(app_name, app_dir):
-    """Run appimagetool to build the AppImage."""
-    output_path = Path.cwd() / f"{app_name}.AppImage"
-    final_path = output_path.with_suffix(".AppBox")
-
-    print(f"Building AppImage: {output_path}")
+def build_appimage(app_name, app_dir, output_file):
+    """Run appimagetool to build the AppImage/AppBox."""
+    print(f"Building AppImage: {output_file}")
     try:
-        subprocess.run([str(appimagetool_path), str(app_dir), str(output_path)], check=True)
-        shutil.move(output_path, final_path)
-        print(f"Renamed output to {final_path}")
+        subprocess.run([str(appimagetool_path), str(app_dir), str(output_file)], check=True)
+        print(f"AppImage built successfully: {output_file}")
+
+        # -- Clean cache after successful build.
 
         cleanup_cache(app_name)
 
@@ -208,8 +213,8 @@ def build_appimage(app_name, app_dir):
         exit(1)
 
 
-def prepare_appimage(config):
-    """Prepare and build AppImage."""
+def prepare_appimage(config, install_mode=False):
+    """Prepare and build an AppImage."""
     app_name = config['buildinfo']['name']
     binary_path = config['buildinfo']['binarypath']
     desktop_path = config['buildinfo'].get('desktoppath', None)
@@ -224,6 +229,7 @@ def prepare_appimage(config):
     ensure_appimagetool()
 
     # -- Move binary to correct location BEFORE generating AppRun.
+
     bin_dir = app_dir / "usr/bin"
     new_binary_path = bin_dir / extracted_binary_path.name
 
@@ -237,6 +243,15 @@ def prepare_appimage(config):
     fix_desktop_entry(app_name, app_dir, new_binary_path)
     copy_system_icon(app_name, app_dir, icon_path)
 
+    # -- Determine the final AppImage location.
+
+    output_dir = Path.home() / ".local/bin/nx-apphub" if install_mode else Path.cwd()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_file = output_dir / f"{app_name}.{'AppBox' if install_mode else 'AppImage'}"
+
     # -- Build final AppImage.
 
-    build_appimage(app_name, app_dir)
+    build_appimage(app_name, app_dir, output_file)
+
+    print(f"AppImage created: {output_file}")
