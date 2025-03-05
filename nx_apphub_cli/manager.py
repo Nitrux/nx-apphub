@@ -44,18 +44,22 @@ backup_dir = repo_base_dir / "backups"
 git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
 
 
-# -- Ensure base directories exist.
+# -- Ensure repository directories exist.
 
 repo_base_dir.mkdir(parents=True, exist_ok=True)
 apps_dir.mkdir(parents=True, exist_ok=True)
-backup_dir.mkdir(parents=True, exist_ok=True)
+
+
+# -- Ensure directories to put the AppImages exist.
+
+install_dir = Path.home() / ".local/bin/nx-apphub"
+install_dir.mkdir(parents=True, exist_ok=True)
+repo_dir = repo_base_dir / "apps"
 
 
 def install(app_name):
     """Fetch YAML metadata, build AppImage, and store metadata."""
     print(f"Installing {app_name}...")
-
-    repo_dir = repo_base_dir / "apps"
 
     # -- If repo exists but isn't valid, remove & re-clone.
 
@@ -92,15 +96,38 @@ def install(app_name):
 
     # -- Build the AppImage.
 
-    prepare_appimage(config)
+    prepare_appimage(config, install_mode=True)
     print(f"Installation of {app_name} completed!")
+
+    # -- Verify the new AppBox exists **before** deleting the old one.
+    
+    built_appbox = Path.cwd() / f"{app_name}.AppBox"
+    if not built_appbox.exists():
+        print(f"Error: Failed to find the built {app_name}.AppBox file. Aborting installation.")
+        return
+
+    appbox_path = install_dir / f"{app_name}.AppBox"
+
+    # -- Ask user for overwrite confirmation if the AppBox already exists.
+    
+    if appbox_path.exists():
+        user_confirm = input(f"Warning: {app_name} is already installed. Overwrite? (y/N): ").strip().lower()
+        if user_confirm not in ("y", "yes"):
+            print(f"Skipped reinstallation of {app_name}.")
+            return
+        appbox_path.unlink()
+
+    # -- Move the new AppBox to the install directory.
+
+    shutil.move(str(built_appbox), str(appbox_path))
+    print(f"Installed {app_name} to {appbox_path}")
 
 
 def remove(app_name):
     """Remove only the installed AppBox."""
     print(f"Removing {app_name}...")
 
-    app_file = repo_base_dir / f"{app_name}.AppBox"
+    app_file = install_dir / f"{app_name}.AppBox"
     
     if app_file.exists():
         try:
@@ -118,29 +145,42 @@ def remove(app_name):
 
 def search():
     """Search for available applications in the local repository."""
-    print("Searching for available applications...")
+    print("\nAvailable applications:\n" + "-" * 40)
     
+    found_apps = []
     for app_dir in apps_dir.iterdir():
         app_yaml_path = app_dir / "app.yml"
         if app_yaml_path.exists():
             config = load_yaml_config(app_yaml_path)
             app_name = config["buildinfo"]["name"]
             app_version = config["buildinfo"].get("version", "unknown")
-            print(f"{app_name} - Version: {app_version}")
+            found_apps.append(f"{app_name} - Version: {app_version}")
+
+    if found_apps:
+        print("\n".join(found_apps))
+    else:
+        print("No applications found in the repository.")
+
+
+# -- Ensure backup directory exists.
+
+backup_dir.mkdir(parents=True, exist_ok=True)
 
 
 def backup(app_name):
     """Create a backup of the installed AppBox."""
-    app_file = repo_base_dir / f"{app_name}.AppBox"
+    app_file = install_dir / f"{app_name}.AppBox"
     if not app_file.exists():
         print(f"Error: {app_name} is not installed.")
         return
     
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
     backup_name = backup_dir / f"{app_name}_{datetime.now().strftime('%Y-%m-%d')}.tar"
     with tarfile.open(backup_name, "w") as tar:
         tar.add(app_file, arcname=app_file.name)
     
-    print(f"Backup of {app_name} created: {backup_name}")
+    print(f"Backup of {app_name} created at: {backup_name}")
 
 
 def update(app_name):
@@ -153,7 +193,7 @@ def update(app_name):
 
 
 def downgrade(app_name):
-    """Restore the most recent backup."""
+    """Restore a specific backup of an AppBox."""
     print(f"Downgrading {app_name}...")
     
     backups = sorted(backup_dir.glob(f"{app_name}_*.tar"), reverse=True)
@@ -161,11 +201,28 @@ def downgrade(app_name):
         print(f"No backups found for {app_name}.")
         return
     
-    latest_backup = backups[0]
-    with tarfile.open(latest_backup, "r") as tar:
-        tar.extractall(path=repo_base_dir)
-    
-    print(f"Restored {app_name} from backup: {latest_backup}")
+    print("\nAvailable backups:")
+    for i, backup in enumerate(backups, 1):
+        print(f"{i}. {backup.name}")
+
+    while True:
+        choice = input("\nEnter the number of the backup to restore (default = latest): ").strip()
+        if choice == "":
+            index = 0
+            break
+        if choice.isdigit() and 1 <= int(choice) <= len(backups):
+            index = int(choice) - 1
+            break
+        print("Invalid selection. Please enter a valid number.")
+
+    selected_backup = backups[index]
+
+    try:
+        with tarfile.open(selected_backup, "r") as tar:
+            tar.extractall(path=install_dir)
+        print(f"Successfully restored {app_name} from backup: {selected_backup}")
+    except (tarfile.TarError, OSError) as e:
+        print(f"Error: Could not restore {app_name} from backup. Reason: {e}")
 
 
 # -- Export functions.
