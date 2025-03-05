@@ -26,6 +26,8 @@ import os
 import shutil
 import subprocess
 import yaml
+import tarfile
+from datetime import datetime
 from pathlib import Path
 from .downloader import get_latest_deb
 from .extractor import extract_deb
@@ -38,6 +40,7 @@ from .utils import cleanup_cache
 
 repo_base_dir = Path.home() / ".local/share/nx-apphub-cli"
 apps_dir = repo_base_dir / "apps"
+backup_dir = repo_base_dir / "backups"
 git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
 
 
@@ -45,6 +48,7 @@ git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
 
 repo_base_dir.mkdir(parents=True, exist_ok=True)
 apps_dir.mkdir(parents=True, exist_ok=True)
+backup_dir.mkdir(parents=True, exist_ok=True)
 
 
 def install(app_name):
@@ -92,16 +96,12 @@ def install(app_name):
     print(f"Installation of {app_name} completed!")
 
 
-
 def remove(app_name):
-    """Remove the installed AppBox and metadata safely."""
+    """Remove only the installed AppBox."""
     print(f"Removing {app_name}...")
 
     app_file = repo_base_dir / f"{app_name}.AppBox"
-    metadata_dir = apps_dir / app_name
-
-    # -- Check if AppBox exists before removing.
-
+    
     if app_file.exists():
         try:
             app_file.unlink()
@@ -112,78 +112,62 @@ def remove(app_name):
     else:
         print(f"AppBox for {app_name} not found.")
 
-    # -- Ensure metadata directory is removed safely.
-
-    if metadata_dir.exists():
-        try:
-            shutil.rmtree(metadata_dir)
-            print(f"Metadata for {app_name} removed.")
-        except PermissionError:
-            print(f"Error: Cannot remove metadata for {app_name}.")
-    else:
-        print(f"Metadata for {app_name} not found.")
-
-    # -- Clean up cache for this app only.
-
     cleanup_cache(app_name)
-
     print(f"{app_name} has been successfully removed.")
 
 
-def update(app_name):
-    """Update an AppBox using Zsync."""
-    print(f"Updating {app_name}...")
+def search():
+    """Search for available applications in the local repository."""
+    print("Searching for available applications...")
+    
+    for app_dir in apps_dir.iterdir():
+        app_yaml_path = app_dir / "app.yml"
+        if app_yaml_path.exists():
+            config = load_yaml_config(app_yaml_path)
+            app_name = config["buildinfo"]["name"]
+            app_version = config["buildinfo"].get("version", "unknown")
+            print(f"{app_name} - Version: {app_version}")
 
+
+def backup(app_name):
+    """Create a backup of the installed AppBox."""
     app_file = repo_base_dir / f"{app_name}.AppBox"
     if not app_file.exists():
         print(f"Error: {app_name} is not installed.")
         return
+    
+    backup_name = backup_dir / f"{app_name}_{datetime.now().strftime('%Y-%m-%d')}.tar"
+    with tarfile.open(backup_name, "w") as tar:
+        tar.add(app_file, arcname=app_file.name)
+    
+    print(f"Backup of {app_name} created: {backup_name}")
 
-    # -- Load metadata and get update URL.
 
-    app_yaml_path = apps_dir / app_name / "app.yml"
-    if not app_yaml_path.exists():
-        print(f"Error: No YAML metadata found for {app_name}. Cannot update.")
-        return
-
-    config = load_yaml_config(app_yaml_path)
-    zsync_url = config["buildinfo"].get("update_url", "")
-
-    if not zsync_url:
-        print(f"Error: No update URL specified for {app_name}.")
-        return
-
-    # -- Run zsync update.
-    try:
-        subprocess.run(["zsync", "-i", str(app_file), zsync_url], check=True)
-        print(f"{app_name} updated successfully!")
-    except subprocess.CalledProcessError:
-        print(f"Error updating {app_name}.")
+def update(app_name):
+    """Update an AppBox by creating a backup and rebuilding."""
+    print(f"Updating {app_name}...")
+    backup(app_name)
+    remove(app_name)
+    install(app_name)
+    print(f"{app_name} updated successfully!")
 
 
 def downgrade(app_name):
-    """Downgrade an AppBox using a stored Zstd backup."""
+    """Restore the most recent backup."""
     print(f"Downgrading {app_name}...")
-
-    backup_file = repo_base_dir / f"{app_name}.zst"
-    app_file = repo_base_dir / f"{app_name}.AppBox"
-    temp_file = repo_base_dir / f"{app_name}.AppBox.tmp"
-
-    if not backup_file.exists():
-        print(f"No downgrade backup found for {app_name}.")
+    
+    backups = sorted(backup_dir.glob(f"{app_name}_*.tar"), reverse=True)
+    if not backups:
+        print(f"No backups found for {app_name}.")
         return
-
-    # -- Decompress the backup into a temporary file.
-    try:
-        subprocess.run(["zstd", "--decompress", str(backup_file), "-o", str(temp_file)], check=True)
-        shutil.move(str(temp_file), str(app_file))
-        print(f"{app_name} downgraded successfully!")
-    except subprocess.CalledProcessError:
-        print(f"Error downgrading {app_name}.")
-        if temp_file.exists():
-            temp_file.unlink()  # Cleanup failed temp file
+    
+    latest_backup = backups[0]
+    with tarfile.open(latest_backup, "r") as tar:
+        tar.extractall(path=repo_base_dir)
+    
+    print(f"Restored {app_name} from backup: {latest_backup}")
 
 
 # -- Export functions.
 
-__all__ = ["install", "remove", "update", "downgrade"]
+__all__ = ["install", "remove", "update", "downgrade", "search", "backup"]
