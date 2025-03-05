@@ -64,7 +64,7 @@ def generate_apprun(app_dir, exec_path):
 #############################################################################################################################################################################
 #   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
 #                                                                                                                                                                           #
-#   Copyright <2025> <Nitrux Latinoamericana <hello@nxos.org>>                                                                                                                   #
+#   Copyright <2025> <Nitrux Latinoamericana <hello@nxos.org>>                                                                                                              #
 #                                                                                                                                                                           #
 #   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
 #                                                                                                                                                                           #
@@ -83,24 +83,19 @@ def generate_apprun(app_dir, exec_path):
 #    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
 #############################################################################################################################################################################
 
-
 # -- Exit on errors.
-
 set -eu
 
-
 # -- Get the running directory of the AppImage.
-
 realpath=$(readlink -f "$0")
 running_dir=$(dirname "$realpath")
 
 # -- Set environment variables for proper execution inside the AppImage.
-
 export PATH="$running_dir/usr/bin:$running_dir/usr/sbin:$running_dir/usr/games:$running_dir/bin:$running_dir/sbin:$PATH"
-export LD_LIBRARY_PATH="$running_dir/usr/lib:$running_dir/usr/lib/x86_64-linux-gnu:$running_dir/lib:$LD_LIBRARY_PATH"
-export XDG_DATA_DIRS="$running_dir/usr/share:$XDG_DATA_DIRS"
-export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
-export QT_PLUGIN_PATH="$running_dir/usr/lib/qt5/plugins:$QT_PLUGIN_PATH"
+export LD_LIBRARY_PATH="${{LD_LIBRARY_PATH:-}}:$running_dir/usr/lib:$running_dir/usr/lib/x86_64-linux-gnu:$running_dir/lib"
+export XDG_DATA_DIRS="${{XDG_DATA_DIRS:-}}:$running_dir/usr/share"
+export GSETTINGS_SCHEMA_DIR="${{GSETTINGS_SCHEMA_DIR:-}}:$running_dir/usr/share/glib-2.0/schemas"
+export QT_PLUGIN_PATH="${{QT_PLUGIN_PATH:-}}:$running_dir/usr/lib/qt5/plugins"
 
 # -- Run the application.
 exec "$running_dir/{exec_path}" "$@"
