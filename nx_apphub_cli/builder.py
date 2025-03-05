@@ -37,6 +37,9 @@ app_base_dir = Path.home() / ".cache/nx-apphub-cli"
 local_bin = Path.home() / ".local/bin"
 appimagetool_path = local_bin / "appimagetool"
 
+
+# -- Get an icon from the default icon themes. Search in /usr/share/icons and use /usr/share/pixmaps as fallback.
+
 icon_themes = ["breeze-dark", "breeze", "Adwaita", "Luv", "hicolor"]
 
 def find_system_icon(icon_name, preferred_theme=None):
@@ -53,8 +56,19 @@ def find_system_icon(icon_name, preferred_theme=None):
                     return exact_match
                 for icon_file in theme_path.rglob(f"{icon_name}{ext}"):
                     return icon_file
+
+    pixmaps_path = Path("/usr/share/pixmaps")
+    for ext in icon_exts:
+        exact_match = pixmaps_path / f"{icon_name}{ext}"
+        if exact_match.exists():
+            return exact_match
+        for icon_file in pixmaps_path.glob(f"{icon_name}{ext}"):
+            return icon_file
+
     return None
 
+
+# -- Create the AppRun for the AppImage.
 
 def generate_apprun(app_dir, exec_path):
     """Generate the AppRun script dynamically inside the AppImage."""
