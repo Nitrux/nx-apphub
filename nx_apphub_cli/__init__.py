@@ -28,7 +28,7 @@ from .downloader import get_latest_deb
 from .extractor import extract_deb
 from .builder import prepare_appimage, setup_appimage_directories
 from .utils import ensure_executable, cleanup_cache
-from .manager import install, remove, update, downgrade
+from .manager import install, remove, update, downgrade, backup, search
 
 __all__ = [
     "main",
@@ -41,4 +41,6 @@ __all__ = [
     "remove",
     "update",
     "downgrade",
+    "backup",
+    "search",
 ]
