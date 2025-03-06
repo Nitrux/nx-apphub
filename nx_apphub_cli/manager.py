@@ -180,12 +180,48 @@ def backup(app_name):
 
 
 def update(app_name):
-    """Update an AppBox by creating a backup and rebuilding."""
-    print(f"Updating {app_name}...")
-    backup(app_name)
-    remove(app_name)
+    """Update an AppBox only if a newer version is available."""
+    print(f"Checking for updates for {app_name}...")
+
+    installed_app = next(install_dir.glob(f"{app_name}-*.AppBox"), None)
+    
+    if not installed_app:
+        print(f"Error: {app_name} is not installed. Cannot update.")
+        return
+    
+    installed_version = installed_app.stem.replace(f"{app_name}-", "")
+    
+    app_yaml_path = repo_dir / app_name / "app.yml"
+    if not app_yaml_path.exists():
+        print(f"Error: No YAML found for {app_name} in repository.")
+        return
+    
+    config = load_yaml_config(app_yaml_path)
+    latest_version = config["buildinfo"].get("version")
+
+    if not latest_version:
+        print(f"Error: No version information found for {app_name}.")
+        return
+
+    if installed_version == latest_version:
+        print(f"{app_name} is already up to date (version {installed_version}).")
+        return
+    
+    print(f"New version available: {latest_version} (Installed: {installed_version})")
+
+    installed_app.chmod(0o644)
+
+    backup_name = backup_dir / f"{installed_app.name}.tar"
+    with tarfile.open(backup_name, "w") as tar:
+        tar.add(installed_app, arcname=installed_app.name)
+    print(f"Backup created: {backup_name}")
+
+    installed_app.unlink()
+    print(f"Removed outdated {installed_app}")
+
     install(app_name)
-    print(f"{app_name} updated successfully!")
+
+    print(f"{app_name} updated successfully to version {latest_version}!")
 
 
 def downgrade(app_name):

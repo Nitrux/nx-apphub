@@ -214,11 +214,12 @@ def build_appimage(app_name, app_dir, output_file):
 
 
 def prepare_appimage(config, install_mode=False):
-    """Prepare and build an AppImage."""
-    app_name = config['buildinfo']['name']
-    binary_path = config['buildinfo']['binarypath']
-    desktop_path = config['buildinfo'].get('desktoppath', None)
-    icon_path = config['buildinfo'].get('iconpath', None)
+    """Prepare and build an AppImage with the version in the filename."""
+    app_name = config["buildinfo"]["name"]
+    version = config["buildinfo"].get("version", "unknown")
+    binary_path = config["buildinfo"]["binarypath"]
+    desktop_path = config["buildinfo"].get("desktoppath", None)
+    icon_path = config["buildinfo"].get("iconpath", None)
 
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
@@ -248,7 +249,10 @@ def prepare_appimage(config, install_mode=False):
     output_dir = Path.home() / ".local/bin/nx-apphub" if install_mode else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_file = output_dir / f"{app_name}.{'AppBox' if install_mode else 'AppImage'}"
+    # -- Use versioned filename for tracking updates.
+
+    file_ext = "AppBox" if install_mode else "AppImage"
+    output_file = output_dir / f"{app_name}-{version}.{file_ext}"
 
     # -- Build final AppImage.
 
