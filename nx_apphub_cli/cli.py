@@ -28,7 +28,7 @@ from nx_apphub_cli.config import load_yaml_config
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
-from nx_apphub_cli.manager import install, remove, update, downgrade
+from nx_apphub_cli.manager import install, remove, update, downgrade, backup, search
 
 
 def main():
@@ -50,6 +50,11 @@ def main():
     subparser_downgrade = subparsers.add_parser("downgrade", help="Downgrade an installed application")
     subparser_downgrade.add_argument("app_name", type=str, help="Name of the application to downgrade")
 
+    subparser_backup = subparsers.add_parser("backup", help="Backup an installed application")
+    subparser_backup.add_argument("app_name", type=str, help="Name of the application to backup")
+
+    subparsers.add_parser("search", help="List available applications")
+
     # -- Building command (requires YAML file).
 
     subparser_build = subparsers.add_parser("build", help="Build an AppImage from a YAML file")
@@ -69,6 +74,10 @@ def main():
         update(args.app_name)
     elif args.command == "downgrade":
         downgrade(args.app_name)
+    elif args.command == "backup":
+        backup(args.app_name)
+    elif args.command == "search":
+        search()
     elif args.command == "build":
         config = load_yaml_config(args.config)
         package_name = config["buildinfo"]["name"]
