@@ -53,7 +53,8 @@ def main():
     subparser_backup = subparsers.add_parser("backup", help="Backup an installed application")
     subparser_backup.add_argument("app_name", type=str, help="Name of the application to backup")
 
-    subparsers.add_parser("search", help="List available applications")
+    subparser_search = subparsers.add_parser("search", help="Search for specific applications")
+    subparser_search.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to search for")
 
     # -- Building command (requires YAML file).
 
@@ -77,7 +78,7 @@ def main():
     elif args.command == "backup":
         backup(args.app_name)
     elif args.command == "search":
-        search()
+        search(args.app_names)
     elif args.command == "build":
         config = load_yaml_config(args.config)
         package_name = config["buildinfo"]["name"]

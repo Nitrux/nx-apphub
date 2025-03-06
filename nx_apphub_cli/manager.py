@@ -138,23 +138,24 @@ def remove(app_name):
     print(f"{app_name} has been successfully removed.")
 
 
-def search():
-    """Search for available applications in the local repository."""
-    print("\nAvailable applications:\n" + "-" * 40)
+def search(app_names):
+    """Search for specific applications in the local repository."""
     
     found_apps = []
-    for app_dir in apps_dir.iterdir():
+
+    for app_name in app_names:
+        app_dir = apps_dir / app_name
         app_yaml_path = app_dir / "app.yml"
+
         if app_yaml_path.exists():
             config = load_yaml_config(app_yaml_path)
-            app_name = config["buildinfo"]["name"]
             app_version = config["buildinfo"].get("version", "unknown")
             found_apps.append(f"{app_name} - Version: {app_version}")
+        else:
+            print(f"Application '{app_name}' not found.")
 
     if found_apps:
         print("\n".join(found_apps))
-    else:
-        print("No applications found in the repository.")
 
 
 # -- Ensure backup directory exists.
