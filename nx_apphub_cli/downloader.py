@@ -51,12 +51,16 @@ ubuntu_mirrors = [
     "http://security.ubuntu.com/ubuntu",
 ]
 
-def get_latest_deb(pkg_name, repos, package_name):
+def get_latest_deb(pkg_name, repos, package_name, quiet=False):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
     
     package_dir = cache_dir / package_name
     deb_dir = package_dir / "debs"
     deb_dir.mkdir(parents=True, exist_ok=True)
+
+    if not repos:
+        print(f"Error: No valid repositories provided for {pkg_name}. Aborting.")
+        sys.exit(1)
 
     for repo in repos:
         distro = repo['distro'].lower()
@@ -64,7 +68,8 @@ def get_latest_deb(pkg_name, repos, package_name):
         arch = repo['arch']
 
         if distro not in ["debian", "ubuntu"]:
-            print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu.")
+            if not quiet:
+                print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu.")
             continue
 
         mirror_list = debian_mirrors if distro == "debian" else ubuntu_mirrors
@@ -73,9 +78,13 @@ def get_latest_deb(pkg_name, repos, package_name):
             pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name)
             if pkg_info:
                 deb_url = f"{mirror}/{pkg_info}"
-                return download_file(deb_url, deb_dir / f"{pkg_name}.deb")
+                
+                if not quiet:
+                    print(f"Downloading {pkg_name} from {deb_url}...")
 
-    print(f"Failed to find package: {pkg_name} in any repository.")
+                return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
+
+    print(f"Error: Failed to find package '{pkg_name}' in any repository.")
     sys.exit(1)
 
 

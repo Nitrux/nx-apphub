@@ -29,25 +29,20 @@ from pathlib import Path
 
 # -- Extract .deb files into the correct package directory.
 
-def extract_deb(deb_path, package_name):
+def extract_deb(deb_path, package_name, quiet=False):
     """Extracts a .deb package into its designated AppDir."""
     
-    # -- Define per-package directories dynamically.
-
     package_dir = Path.home() / ".cache/nx-apphub-cli" / package_name
     app_dir = package_dir / "AppDir"
     deb_dir = package_dir / "debs"
 
-    # -- Ensure AppDir exists.
-
     app_dir.mkdir(parents=True, exist_ok=True)
     
-    # -- Extract the .deb package.
-
     temp_dir = deb_dir / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Extracting {deb_path} to {app_dir}...")
+    if not quiet:
+        print(f"Extracting {deb_path}...")
 
     try:
         # -- Extract control, data, and metadata from the .deb package.
@@ -61,10 +56,10 @@ def extract_deb(deb_path, package_name):
             print(f"Error: No valid data archive found in {deb_path}.")
             return
 
-        # -- Extract the correct data archive.
-
         data_archive = archive_files[0]
 
+        # -- Extract the correct archive type.
+    
         if data_archive.suffix == ".xz":
             subprocess.run(["tar", "xf", str(data_archive), "-C", str(app_dir)], check=True)
         elif data_archive.suffix == ".gz":
@@ -77,7 +72,8 @@ def extract_deb(deb_path, package_name):
             print(f"Error: Unsupported archive format in {deb_path}.")
             return
 
-        print(f"Successfully extracted {deb_path} to {app_dir}")
+        if not quiet:
+            print(f"Extracted {deb_path} successfully.")
 
         # -- Ensure that libraries are correctly moved without overwriting existing ones.
 
@@ -88,15 +84,12 @@ def extract_deb(deb_path, package_name):
             target_file = lib_dir / extracted_file.name
             if not target_file.exists():
                 shutil.move(str(extracted_file), str(target_file))
-                print(f"Moved {extracted_file} → {target_file}")
-            else:
-                print(f"Skipping {extracted_file}: already exists in {lib_dir}")
+                if not quiet:
+                    print(f"Moved {extracted_file} → {target_file}")
 
     except subprocess.CalledProcessError as e:
-        print(f"Extraction failed: {e}")
+        print(f"Error: Extraction failed for {deb_path}. {e}")
         return
     
     finally:
-        # -- Cleanup temporary extraction directory.
-
         shutil.rmtree(temp_dir)
