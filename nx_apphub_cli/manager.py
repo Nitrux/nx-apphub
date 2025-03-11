@@ -63,7 +63,6 @@ def install(app_name):
         shutil.rmtree(repo_base_dir)
 
     if not (repo_base_dir / ".git").exists():
-        print("Cloning repository...")
         subprocess.run(["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)], check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
@@ -111,15 +110,14 @@ def install(app_name):
     prepare_appimage(config, install_mode=True)
     print(f"Installation of {app_name} completed!")
 
-    # -- Verify new AppBox exists before moving.
+    # -- Verify new AppBox exists before final confirmation.
 
     built_appbox = install_dir / f"{app_name}-{app_version}-{system_arch}.AppBox"
     if not built_appbox.exists():
-        print(f"Error: Failed to find the built {app_name}.AppBox file. Aborting installation.")
+        print(f"Error: Failed to find the built {built_appbox} file. Aborting installation.")
         return
 
-    shutil.move(str(built_appbox), str(appbox_path))
-    print(f"Installed {app_name} to {appbox_path}")
+    print(f"Installation successful: {built_appbox}")
 
 
 def remove(app_name):

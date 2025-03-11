@@ -113,23 +113,24 @@ def fetch_package_metadata(mirror, release, arch, pkg_name):
     return None
 
 
-def download_file(url, dest):
-    """Downloads a file from the given URL and saves it to dest."""
-    print(f"Downloading {url} to {dest}")
+def download_file(url, dest_path, quiet=False):
+    """Download a file from a URL and save it to the given destination path."""
+    import requests
 
-    try:
-        response = requests.get(url, stream=True, timeout=20)
-        response.raise_for_status()
+    if not quiet:
+        print(f"Downloading {url} to {dest_path}")
 
-        dest.parent.mkdir(parents=True, exist_ok=True)
+    response = requests.get(url, stream=True)
+    if response.status_code != 200:
+        print(f"Error: Failed to download {url}. HTTP {response.status_code}")
+        return None
 
-        with open(dest, "wb") as f:
-            for chunk in response.iter_content(1024):
-                f.write(chunk)
+    with open(dest_path, "wb") as f:
+        for chunk in response.iter_content(1024):
+            f.write(chunk)
 
-        print(f"Successfully downloaded {dest}")
-        return dest
+    if not quiet:
+        print(f"Successfully downloaded {dest_path}")
 
-    except requests.RequestException as e:
-        print(f"Error downloading {url}: {e}")
-        sys.exit(1)
+    return dest_path
+
