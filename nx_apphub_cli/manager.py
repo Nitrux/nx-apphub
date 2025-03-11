@@ -58,7 +58,7 @@ def install(app_name):
 
     # -- Ensure the repository is valid.
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
-        print(f"⚠️  Warning: {repo_base_dir} is not a valid Git repository. Removing...")
+        print(f"⚠️ Warning: {repo_base_dir} is not a valid Git repository. Removing...")
         shutil.rmtree(repo_base_dir)
 
     if not (repo_base_dir / ".git").exists():

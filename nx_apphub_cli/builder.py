@@ -126,7 +126,7 @@ exec "$running_dir/{exec_path}" "$@"
         f.write(apprun_script)
 
     apprun_path.chmod(0o755)
-    print(f"Generated AppRun at {apprun_path}")
+    # print(f"Generated AppRun at {apprun_path}")
 
 
 def setup_appimage_directories(app_name, binary_path):
@@ -146,7 +146,7 @@ def fix_desktop_entry(app_name, app_dir, binary_path):
     """Ensure the AppImage contains a valid .desktop file."""
     desktop_file_path = app_dir / f"{app_name}.desktop"
     if not desktop_file_path.exists():
-        print(f"No .desktop file found for {app_name}. Generating a minimal one...")
+        # print(f"No .desktop file found for {app_name}. Generating a minimal one...")
         desktop_content = f"""[Desktop Entry]
 Type=Application
 Name={app_name}
@@ -174,7 +174,7 @@ Icon={app_name}
 
     with open(desktop_file_path, "w") as f:
         f.writelines(updated_lines)
-    print(f"Fixed Exec path in {desktop_file_path}")
+    # print(f"Fixed Exec path in {desktop_file_path}")
 
 
 def copy_system_icon(app_name, app_dir, icon_path):
@@ -188,20 +188,20 @@ def copy_system_icon(app_name, app_dir, icon_path):
             print(f"Copied provided icon to {icon_dest}")
             return
 
-    print(f"No provided icon for {app_name}. Searching for a fallback system icon...")
+    # print(f"No provided icon for {app_name}. Searching for a fallback system icon...")
     system_icon = find_system_icon(app_name) or find_system_icon("utilities-terminal")
     if system_icon:
         shutil.copy(system_icon, icon_dest)
-        print(f"Copied system icon to {icon_dest}")
+        # print(f"Copied system icon to {icon_dest}")
     else:
-        print("Warning: No system icon found! AppImage might fail to build.")
+        raise FileNotFoundError(f"❌ Error: No system icon found for {app_name}.")
 
 
 def build_appimage(app_name, app_dir, output_file, quiet=True):
     """Run appimagetool to build the AppImage."""
     if not quiet:
-        print(f"Building AppImage: {output_file}")
-    
+        print(f"\n🛠  Building AppImage: {output_file} ...")
+
     try:
         with open(os.devnull, 'w') as devnull:
             subprocess.run(
@@ -212,14 +212,14 @@ def build_appimage(app_name, app_dir, output_file, quiet=True):
             )
 
         if not quiet:
-            print(f"AppImage built successfully: {output_file}")
+            print(f"✅ AppImage built successfully: {output_file}")
 
         # -- Clean cache after successful build.
 
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
-        print(f"Error: AppImage build failed! {e}")
+        print(f"❌ Error: AppImage build failed! {e}")
         exit(1)
 
 
@@ -231,13 +231,13 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     binary_path = config["buildinfo"].get("binarypath")
 
     if not binary_path:
-        print(f"Error: No binary path specified for {app_name}. Aborting.")
+        print(f"❌ Error: No binary path specified for {app_name}. Aborting.")
         return
 
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
     if not extracted_binary_path.exists():
-        print(f"Error: Binary {extracted_binary_path} not found! AppImage might fail.")
+        print(f"❌ Error: Binary {extracted_binary_path} not found! AppImage might fail.")
         return
 
     ensure_appimagetool()
@@ -250,10 +250,11 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     if extracted_binary_path != new_binary_path:
         shutil.move(str(extracted_binary_path), str(new_binary_path))
         if not quiet:
-            print(f"Moved {extracted_binary_path} → {new_binary_path}")
+            print(f"📂 Moved binary: {extracted_binary_path} → {new_binary_path}")
 
     # -- Generate metadata & AppRun.
 
+    print(f"📌 Setting up AppRun and metadata for {app_name}...")
     generate_apprun(app_dir, f"./usr/bin/{new_binary_path.name}")
     fix_desktop_entry(app_name, app_dir, new_binary_path)
     copy_system_icon(app_name, app_dir, config["buildinfo"].get("iconpath", None))
@@ -270,7 +271,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     # -- Build final AppImage.
 
-    build_appimage(app_name, app_dir, output_file)
+    build_appimage(app_name, app_dir, output_file, quiet)
 
     if not quiet:
-        print(f"AppImage created: {output_file}")
+        print(f"📦 AppImage ready: {output_file}\n")

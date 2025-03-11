@@ -53,17 +53,21 @@ def get_architecture():
 
 
 def cleanup_cache(package_name=None):
-    """Remove the cache directory for a specific package or the entire cache."""
+    """Remove the cache directory for a specific package or skip full cache cleanup."""
+    
     cache_dir = Path.home() / ".cache/nx-apphub-cli"
 
     if package_name:
         target_dir = cache_dir / package_name
+
         if target_dir.exists():
-            print(f"Cleaning up cache directory for {package_name}...")
+            print(f"🧹 Cleaning up cache for: {package_name}...")
             shutil.rmtree(target_dir, ignore_errors=True)
-            print(f"Cache directory for {package_name} removed.")
+            print(f"✅ Cache removed for: {package_name}")
+        else:
+            print(f"⚠️ No cache found for: {package_name}. Skipping cleanup.")
     else:
-        print("Skipping full cache cleanup. Only removing package-specific cache.")
+        print("ℹ️ Skipping full cache cleanup. Only removing package-specific cache.")
 
 
 def ensure_appimagetool(quiet=True):
