@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import yaml
 import tarfile
+import platform
 from datetime import datetime
 from pathlib import Path
 from .downloader import get_latest_deb
@@ -36,38 +37,30 @@ from .config import load_yaml_config
 from .utils import cleanup_cache
 
 
-# -- Base directories.
+# -- Ensure directories exist.
 
+system_arch = platform.machine().lower()
 repo_base_dir = Path.home() / ".local/share/nx-apphub-cli"
-apps_dir = repo_base_dir / "apps"
+repo_dir = repo_base_dir / "apps"
 backup_dir = repo_base_dir / "backups"
+install_dir = Path.home() / ".local/bin/nx-apphub"
 git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
 
 
-# -- Ensure repository directories exist.
-
-repo_base_dir.mkdir(parents=True, exist_ok=True)
-apps_dir.mkdir(parents=True, exist_ok=True)
-
-
-# -- Ensure directories to put the AppImages exist.
-
-install_dir = Path.home() / ".local/bin/nx-apphub"
-install_dir.mkdir(parents=True, exist_ok=True)
-repo_dir = repo_base_dir / "apps"
+# -- Create all necessary directories.
+for directory in [repo_base_dir, repo_dir, backup_dir, install_dir]:
+    directory.mkdir(parents=True, exist_ok=True)
 
 
 def install(app_name):
     """Fetch YAML metadata, build AppImage, and store metadata."""
     print(f"Installing {app_name}...")
 
-    # -- If repo exists but isn't valid, remove & re-clone.
+    # -- Ensure the repository is valid.
 
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
         print(f"Warning: {repo_base_dir} exists but is not a valid Git repository. Removing...")
         shutil.rmtree(repo_base_dir)
-
-    # -- Clone repository if missing.
 
     if not (repo_base_dir / ".git").exists():
         print("Cloning repository...")
@@ -76,40 +69,50 @@ def install(app_name):
         print("Updating repository...")
         subprocess.run(["git", "-C", str(repo_base_dir), "pull"], check=True)
 
-    if not apps_dir.exists():
-        apps_dir.mkdir(parents=True, exist_ok=True)
+    # -- Load YAML and determine AppBox filename.
 
-    # -- Validate YAML existence.
-
-    app_yaml_path = repo_dir / app_name / "app.yml"
+    app_yaml_path = repo_dir / app_name / system_arch / "app.yml"
     if not app_yaml_path.exists():
-        print(f"Error: No YAML found for {app_name} in repository.")
+        print(f"Error: No YAML found for {app_name} ({system_arch}) in repository.")
         return
-
-    # -- Check if the AppBox already exists **before doing any work**.
-
-    appbox_path = install_dir / f"{app_name}.AppBox"
-
-    if appbox_path.exists():
-        print(f"Skipping installation: {app_name} is already installed.")
-        return
-
-    # -- Load YAML and process dependencies.
 
     config = load_yaml_config(app_yaml_path)
+    app_version = config["buildinfo"].get("version", "unknown")
+    appbox_path = install_dir / f"{app_name}-{app_version}-{system_arch}.AppBox"
+
+    # -- Check if version is missing from YAML.
+
+    if not app_version or app_version == "unknown":
+        print(f"Error: No valid version found for {app_name}. Aborting installation.")
+        return
+
+    # -- Check if already installed.
+
+    if appbox_path.exists():
+        print(f"Skipping installation: {app_name} {app_version} is already installed.")
+        return
+
+    # -- Ensure `distrorepo` is explicitly defined.
+
+    distrorepo = config["buildinfo"].get("distrorepo")
+    if not distrorepo:
+        print(f"Error: No 'distrorepo' specified for {app_name}. Aborting installation.")
+        return
+
+    # -- Process dependencies.
 
     for dep in config["buildinfo"].get("deps", []):
-        deb_path = get_latest_deb(dep, config["buildinfo"]["distrorepo"], app_name)
+        deb_path = get_latest_deb(dep, distrorepo, app_name)
         extract_deb(deb_path, app_name)
 
-    # -- Build the AppImage.
+    # -- Build AppImage.
 
     prepare_appimage(config, install_mode=True)
     print(f"Installation of {app_name} completed!")
 
-    # -- Verify the new AppBox exists **before moving it**.
+    # -- Verify new AppBox exists before moving.
 
-    built_appbox = Path.cwd() / f"{app_name}.AppBox"
+    built_appbox = Path.cwd() / f"{app_name}-{app_version}-{system_arch}.AppBox"
     if not built_appbox.exists():
         print(f"Error: Failed to find the built {app_name}.AppBox file. Aborting installation.")
         return
@@ -122,17 +125,17 @@ def remove(app_name):
     """Remove only the installed AppBox."""
     print(f"Removing {app_name}...")
 
-    app_file = install_dir / f"{app_name}.AppBox"
-    
-    if app_file.exists():
-        try:
-            app_file.unlink()
-            print(f"Removed {app_file}")
-        except PermissionError:
-            print(f"Error: Cannot remove {app_file}. Is it in use?")
-            return
-    else:
+    app_file = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
+    if not app_file:
         print(f"AppBox for {app_name} not found.")
+        return
+
+    try:
+        app_file.unlink()
+        print(f"Removed {app_file}")
+    except PermissionError:
+        print(f"Error: Cannot remove {app_file}. Is it in use?")
+        return
 
     cleanup_cache(app_name)
     print(f"{app_name} has been successfully removed.")
@@ -140,34 +143,32 @@ def remove(app_name):
 
 def search(app_names):
     """Search for specific applications in the local repository."""
-    
     found_apps = []
+    missing_apps = []
 
     for app_name in app_names:
-        app_dir = apps_dir / app_name
-        app_yaml_path = app_dir / "app.yml"
-
+        app_yaml_path = repo_dir / app_name / system_arch / "app.yml"
         if app_yaml_path.exists():
             config = load_yaml_config(app_yaml_path)
-            app_version = config["buildinfo"].get("version", "unknown")
-            found_apps.append(f"{app_name} - Version: {app_version}")
+            app_version = config["buildinfo"].get("version")
+            if app_version:
+                found_apps.append(f"{app_name} - Version: {app_version}")
+            else:
+                missing_apps.append(app_name)
         else:
-            print(f"Application '{app_name}' not found.")
+            missing_apps.append(app_name)
 
     if found_apps:
         print("\n".join(found_apps))
-
-
-# -- Ensure backup directory exists.
-
-backup_dir.mkdir(parents=True, exist_ok=True)
+    if missing_apps:
+        print(f"Error: No YAML found for {', '.join(missing_apps)}.")
 
 
 def backup(app_name):
     """Create a backup of the installed AppBox."""
-    app_file = install_dir / f"{app_name}.AppBox"
-    if not app_file.exists():
-        print(f"Error: {app_name} is not installed.")
+    app_file = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
+    if not app_file:
+        print(f"AppBox for {app_name} not found.")
         return
     
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -183,56 +184,83 @@ def update(app_name):
     """Update an AppBox only if a newer version is available."""
     print(f"Checking for updates for {app_name}...")
 
-    installed_app = next(install_dir.glob(f"{app_name}-*.AppBox"), None)
-    
+    # -- Find installed AppBox.
+
+    installed_app = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
+
     if not installed_app:
         print(f"Error: {app_name} is not installed. Cannot update.")
         return
-    
-    installed_version = installed_app.stem.replace(f"{app_name}-", "")
-    
-    app_yaml_path = repo_dir / app_name / "app.yml"
-    if not app_yaml_path.exists():
-        print(f"Error: No YAML found for {app_name} in repository.")
+
+    # -- Extract version from installed file.
+
+    installed_parts = installed_app.stem.split("-")
+    if len(installed_parts) < 2:
+        print(f"Error: Could not determine installed version for {app_name}.")
         return
-    
+
+    installed_version = "-".join(installed_parts[1:-1])
+
+    # -- Validate YAML existence.
+
+    app_yaml_path = repo_dir / app_name / system_arch / "app.yml"
+    if not app_yaml_path.exists():
+        print(f"Error: No YAML found for {app_name} ({system_arch}) in repository.")
+        return
+
+    # -- Load YAML and check latest version.
+
     config = load_yaml_config(app_yaml_path)
     latest_version = config["buildinfo"].get("version")
 
-    if not latest_version:
-        print(f"Error: No version information found for {app_name}.")
+    if not latest_version or latest_version == "unknown":
+        print(f"Error: No valid version information found for {app_name}. Aborting update.")
         return
 
     if installed_version == latest_version:
         print(f"{app_name} is already up to date (version {installed_version}).")
         return
-    
+
     print(f"New version available: {latest_version} (Installed: {installed_version})")
 
-    installed_app.chmod(0o644)
+    # -- Remove executable permission before backup.
 
-    backup_name = backup_dir / f"{installed_app.name}.tar"
+    try:
+        installed_app.chmod(0o644)
+    except OSError as e:
+        print(f"Warning: Failed to modify permissions of {installed_app}. Reason: {e}")
+
+    # -- Create backup.
+
+    backup_name = backup_dir / f"{app_name}-{installed_version}-{system_arch}.tar"
     with tarfile.open(backup_name, "w") as tar:
         tar.add(installed_app, arcname=installed_app.name)
+
     print(f"Backup created: {backup_name}")
 
-    installed_app.unlink()
-    print(f"Removed outdated {installed_app}")
+    # -- Attempt installation of new version.
 
     install(app_name)
 
-    print(f"{app_name} updated successfully to version {latest_version}!")
+    # -- Check if new AppBox exists before removing the old one.
+
+    new_appbox = install_dir / f"{app_name}-{latest_version}-{system_arch}.AppBox"
+    if new_appbox.exists():
+        installed_app.unlink()
+        print(f"Updated {app_name} to version {latest_version}!")
+    else:
+        print(f"Update failed: Keeping existing {installed_app}")
 
 
 def downgrade(app_name):
     """Restore a specific backup of an AppBox."""
     print(f"Downgrading {app_name}...")
-    
-    backups = sorted(backup_dir.glob(f"{app_name}_*.tar"), reverse=True)
+
+    backups = sorted(backup_dir.glob(f"{app_name}-*-{system_arch}.tar"), reverse=True)
     if not backups:
         print(f"No backups found for {app_name}.")
         return
-    
+
     print("\nAvailable backups:")
     for i, backup in enumerate(backups, 1):
         print(f"{i}. {backup.name}")
