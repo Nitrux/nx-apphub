@@ -198,7 +198,7 @@ def copy_system_icon(app_name, app_dir, icon_path):
 
 
 def build_appimage(app_name, app_dir, output_file):
-    """Run appimagetool to build the AppImage/AppBox."""
+    """Run appimagetool to build the AppImage."""
     print(f"Building AppImage: {output_file}")
     try:
         subprocess.run([str(appimagetool_path), str(app_dir), str(output_file)], check=True)
