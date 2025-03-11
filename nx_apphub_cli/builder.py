@@ -252,7 +252,7 @@ def prepare_appimage(config, install_mode=False):
     # -- Use versioned filename for tracking updates.
 
     file_ext = "AppBox" if install_mode else "AppImage"
-    output_file = output_dir / f"{app_name}-{version}.{file_ext}"
+    output_file = output_dir / f"{app_name}-{version}-{platform.machine().lower()}.{file_ext}"
 
     # -- Build final AppImage.
 
