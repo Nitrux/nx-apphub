@@ -64,14 +64,15 @@ def install(app_name):
 
     if not (repo_base_dir / ".git").exists():
         print("Cloning repository...")
-        subprocess.run(["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)], check=True)
+        subprocess.run(["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
-        print("Updating repository...")
-        subprocess.run(["git", "-C", str(repo_base_dir), "pull"], check=True)
+        subprocess.run(["git", "-C", str(repo_base_dir), "pull"], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # -- Load YAML and determine AppBox filename.
 
-    app_yaml_path = repo_dir / app_name / system_arch / "app.yml"
+    app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
     if not app_yaml_path.exists():
         print(f"Error: No YAML found for {app_name} ({system_arch}) in repository.")
         return
@@ -112,7 +113,7 @@ def install(app_name):
 
     # -- Verify new AppBox exists before moving.
 
-    built_appbox = Path.cwd() / f"{app_name}-{app_version}-{system_arch}.AppBox"
+    built_appbox = install_dir / f"{app_name}-{app_version}-{system_arch}.AppBox"
     if not built_appbox.exists():
         print(f"Error: Failed to find the built {app_name}.AppBox file. Aborting installation.")
         return
@@ -209,7 +210,7 @@ def update(app_name):
 
     # -- Validate YAML existence.
 
-    app_yaml_path = repo_dir / app_name / system_arch / "app.yml"
+    app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
     if not app_yaml_path.exists():
         print(f"Error: No YAML found for {app_name} ({system_arch}) in repository.")
         return
