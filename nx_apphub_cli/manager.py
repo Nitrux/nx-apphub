@@ -143,18 +143,24 @@ def remove(app_name):
 
 def search(app_names):
     """Search for specific applications in the local repository."""
+
+    # -- Ensure the repository is cloned or updated before searching.
+
+    if not (repo_base_dir / ".git").exists():
+        shutil.rmtree(repo_base_dir, ignore_errors=True)
+        subprocess.run(["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        subprocess.run(["git", "-C", str(repo_base_dir), "pull"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     found_apps = []
     missing_apps = []
 
     for app_name in app_names:
-        app_yaml_path = repo_dir / app_name / system_arch / "app.yml"
+        app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
         if app_yaml_path.exists():
             config = load_yaml_config(app_yaml_path)
-            app_version = config["buildinfo"].get("version")
-            if app_version:
-                found_apps.append(f"{app_name} - Version: {app_version}")
-            else:
-                missing_apps.append(app_name)
+            app_version = config["buildinfo"].get("version", "unknown")
+            found_apps.append(f"{app_name} - Version: {app_version}")
         else:
             missing_apps.append(app_name)
 
