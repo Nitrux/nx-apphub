@@ -213,13 +213,16 @@ def build_appimage(app_name, app_dir, output_file):
         exit(1)
 
 
-def prepare_appimage(config, install_mode=False):
+def prepare_appimage(config, install_mode=False, quiet=False):
     """Prepare and build an AppImage with the version in the filename."""
+    
     app_name = config["buildinfo"]["name"]
     version = config["buildinfo"].get("version", "unknown")
-    binary_path = config["buildinfo"]["binarypath"]
-    desktop_path = config["buildinfo"].get("desktoppath", None)
-    icon_path = config["buildinfo"].get("iconpath", None)
+    binary_path = config["buildinfo"].get("binarypath")
+
+    if not binary_path:
+        print(f"Error: No binary path specified for {app_name}. Aborting.")
+        return
 
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
@@ -236,13 +239,14 @@ def prepare_appimage(config, install_mode=False):
 
     if extracted_binary_path != new_binary_path:
         shutil.move(str(extracted_binary_path), str(new_binary_path))
-        print(f"Moved {extracted_binary_path} → {new_binary_path}")
+        if not quiet:
+            print(f"Moved {extracted_binary_path} → {new_binary_path}")
 
     # -- Generate metadata & AppRun.
 
     generate_apprun(app_dir, f"./usr/bin/{new_binary_path.name}")
     fix_desktop_entry(app_name, app_dir, new_binary_path)
-    copy_system_icon(app_name, app_dir, icon_path)
+    copy_system_icon(app_name, app_dir, config["buildinfo"].get("iconpath", None))
 
     # -- Determine the final AppImage location.
 
@@ -258,4 +262,5 @@ def prepare_appimage(config, install_mode=False):
 
     build_appimage(app_name, app_dir, output_file)
 
-    print(f"AppImage created: {output_file}")
+    if not quiet:
+        print(f"AppImage created: {output_file}")
