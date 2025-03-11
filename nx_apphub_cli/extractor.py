@@ -29,7 +29,7 @@ from pathlib import Path
 
 # -- Extract .deb files into the correct package directory.
 
-def extract_deb(deb_path, package_name, quiet=False):
+def extract_deb(deb_path, package_name, quiet=True):
     """Extracts a .deb package into its designated AppDir."""
     
     package_dir = Path.home() / ".cache/nx-apphub-cli" / package_name

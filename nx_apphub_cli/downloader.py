@@ -51,7 +51,7 @@ ubuntu_mirrors = [
     "http://security.ubuntu.com/ubuntu",
 ]
 
-def get_latest_deb(pkg_name, repos, package_name, quiet=False):
+def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
     
     package_dir = cache_dir / package_name
@@ -113,7 +113,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name):
     return None
 
 
-def download_file(url, dest_path, quiet=False):
+def download_file(url, dest_path, quiet=True):
     """Download a file from a URL and save it to the given destination path."""
     import requests
 

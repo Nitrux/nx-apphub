@@ -197,12 +197,22 @@ def copy_system_icon(app_name, app_dir, icon_path):
         print("Warning: No system icon found! AppImage might fail to build.")
 
 
-def build_appimage(app_name, app_dir, output_file):
+def build_appimage(app_name, app_dir, output_file, quiet=True):
     """Run appimagetool to build the AppImage."""
-    print(f"Building AppImage: {output_file}")
+    if not quiet:
+        print(f"Building AppImage: {output_file}")
+    
     try:
-        subprocess.run([str(appimagetool_path), str(app_dir), str(output_file)], check=True)
-        print(f"AppImage built successfully: {output_file}")
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(
+                [str(appimagetool_path), str(app_dir), str(output_file)],
+                check=True,
+                stdout=None if not quiet else devnull,
+                stderr=None if not quiet else devnull
+            )
+
+        if not quiet:
+            print(f"AppImage built successfully: {output_file}")
 
         # -- Clean cache after successful build.
 
@@ -213,7 +223,7 @@ def build_appimage(app_name, app_dir, output_file):
         exit(1)
 
 
-def prepare_appimage(config, install_mode=False, quiet=False):
+def prepare_appimage(config, install_mode=False, quiet=True):
     """Prepare and build an AppImage with the version in the filename."""
     
     app_name = config["buildinfo"]["name"]

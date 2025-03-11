@@ -66,10 +66,11 @@ def cleanup_cache(package_name=None):
         print("Skipping full cache cleanup. Only removing package-specific cache.")
 
 
-def ensure_appimagetool():
+def ensure_appimagetool(quiet=True):
     """Ensure appimagetool is available by downloading it if missing."""
     if not appimagetool_path.exists():
-        print("appimagetool not found! Downloading from GitHub...")
+        if not quiet:
+            print("appimagetool not found! Downloading from GitHub...")
         local_bin.mkdir(parents=True, exist_ok=True)
 
         # -- Detect system architecture and download the correct executable.
@@ -86,7 +87,8 @@ def ensure_appimagetool():
                     tool_file.write(chunk)
 
             appimagetool_path.chmod(0o755)
-            print(f"appimagetool downloaded and saved to {appimagetool_path}")
+            if not quiet:
+                print(f"appimagetool downloaded and saved to {appimagetool_path}")
 
         except requests.RequestException as e:
             print(f"Error downloading appimagetool: {e}")
