@@ -29,6 +29,7 @@ import shutil
 import platform
 import requests
 from nx_apphub_cli.utils import ensure_appimagetool, cleanup_cache, get_architecture
+from nx_apphub_cli.config import get_apprunconf_value
 
 
 # -- Base working directory for all packages.
@@ -74,36 +75,9 @@ def generate_apprun(app_dir, config):
 
     # -- Fetch settings from YAML. Exit if missing.
 
-    exec_path = config["apprunconf"].get("exec", "").strip()
-    setlibpath = config["apprunconf"].get("setlibpath", "").strip()
-    setpath = config["apprunconf"].get("setpath", "").strip()
-
-    if not exec_path:
-        print(f"❌ Error: 'exec' field is missing in {config['buildinfo']['name']}'s YAML (apprunconf). Aborting.")
-        exit(1)
-
-    if not setlibpath:
-        print(f"❌ Error: 'setlibpath' field is missing in {config['buildinfo']['name']}'s YAML (apprunconf). Using default: /usr/lib")
-        setlibpath = "/usr/lib"
-
-    if not setpath:
-        print(f"❌ Error: 'setpath' field is missing in {config['buildinfo']['name']}'s YAML (apprunconf). Using default: /usr/bin")
-        setpath = "/usr/bin"
-
-    # -- Determine the correct multiarch triplet dynamically.
-
-    arch = get_architecture()
-    arch_map = {
-        "x86_64": "x86_64-linux-gnu",
-        "aarch64": "aarch64-linux-gnu",
-        "arm64": "aarch64-linux-gnu",
-    }
-
-    if arch not in arch_map:
-        print(f"❌ Error: Unsupported architecture detected: {arch}. Aborting.")
-        exit(1)
-
-    multiarch_triplet = arch_map[arch]
+    exec_path = get_apprunconf_value(config, "exec")
+    setpath = get_apprunconf_value(config, "setpath", "/usr/bin")
+    setlibpath = get_apprunconf_value(config, "setlibpath", "/usr/lib")
 
     # -- Construct the script.
 
@@ -146,23 +120,22 @@ running_dir=$(dirname "$realpath")
 # -- Ensure LD_LIBRARY_PATH is always set to avoid unbound variable errors.
 
 if [ -z "${{LD_LIBRARY_PATH+x}}" ]; then export LD_LIBRARY_PATH=""; fi
-if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS="/usr/local/share:/usr/share"; fi
 if [ -z "${{GSETTINGS_SCHEMA_DIR+x}}" ]; then export GSETTINGS_SCHEMA_DIR=""; fi
 if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
 
 
 # -- Set environment variables for proper execution inside the AppImage.
 
-export PATH="$running_dir{setpath}:$PATH"
-export LD_LIBRARY_PATH="$running_dir{setlibpath}:$running_dir{setlibpath}/{multiarch_triplet}:$LD_LIBRARY_PATH"
+export PATH="$running_dir{setpath}:$running_dir/usr/sbin:$PATH"
 export XDG_DATA_DIRS="$running_dir/usr/share:$XDG_DATA_DIRS"
 export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
-export QT_PLUGIN_PATH="$running_dir/usr/lib/qt5/plugins:$QT_PLUGIN_PATH"
+export QT_PLUGIN_PATH="$running_dir{setlibpath}/qt5/plugins:$QT_PLUGIN_PATH"
+export LD_NOCACHE="1"
 
 
 # -- Run the application.
 
-exec "$running_dir/{exec_path}" "$@"
+exec "$running_dir{exec_path}" "$@"
 """
 
     with open(apprun_path, "w") as f:
@@ -266,6 +239,38 @@ def build_appimage(app_name, app_dir, output_file, quiet=True):
         exit(1)
 
 
+def patch_binary_rpath(binary_path, config):
+    """Patch the RPATH of the application binary to use $ORIGIN with the correct paths."""
+
+    # -- Fetch settings from YAML.
+    setlibpath = get_apprunconf_value(config, "setlibpath", "/usr/lib")
+
+    # -- Determine multiarch triplet dynamically.
+    arch_map = {
+        "x86_64": "x86_64-linux-gnu",
+        "aarch64": "aarch64-linux-gnu",
+        "arm64": "aarch64-linux-gnu",
+    }
+
+    arch = get_architecture()
+    multiarch_triplet = arch_map.get(arch)
+
+    if not multiarch_triplet:
+        print(f"❌ Error: Unsupported architecture detected: {arch}. Aborting.")
+        return
+
+    # -- Patch the RPATH of the executable.
+    try:
+        rpath_value = f"$ORIGIN/{setlibpath}:$ORIGIN/{setlibpath}/{multiarch_triplet}"
+        subprocess.run(
+            ["patchelf", "--set-rpath", rpath_value, binary_path],
+            check=True
+        )
+        print(f"✔️  Patched RPATH for: {binary_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error patching RPATH for {binary_path}: {e}")
+
+
 def prepare_appimage(config, install_mode=False, quiet=True):
     """Prepare and build an AppImage with the version in the filename."""
     
@@ -311,6 +316,10 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     file_ext = "AppBox" if install_mode else "AppImage"
     output_file = output_dir / f"{app_name}-{version}-{platform.machine().lower()}.{file_ext}"
+
+    # -- Patch binary RPATH before building the AppImage.
+
+    patch_binary_rpath(str(new_binary_path), config)
 
     # -- Build final AppImage.
 

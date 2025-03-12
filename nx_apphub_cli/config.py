@@ -52,3 +52,8 @@ def load_yaml_config(config_path):
     except FileNotFoundError:
         print(f"Configuration file not found: {config_path}")
         sys.exit(1)
+
+
+def get_apprunconf_value(config, key, default=None):
+    """Fetch values from the 'apprunconf' section of the YAML configuration."""
+    return config.get("apprunconf", {}).get(key, default).strip() if config else default
