@@ -22,22 +22,19 @@
 #    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
 #############################################################################################################################################################################
 
-import requests
-from pathlib import Path
+import gzip
 import re
+import requests
 import sys
+from pathlib import Path
 
 
 # -- Base cache directory for downloads.
 
 cache_dir = Path.home() / ".cache/nx-apphub-cli"
 
-import requests
-import gzip
-import re
-from pathlib import Path
 
-cache_dir = Path.home() / ".cache/nx-apphub-cli"
+# -- Mirors for supported distributions.
 
 debian_mirrors = [
     "http://ftp.debian.org/debian",
@@ -50,6 +47,7 @@ ubuntu_mirrors = [
     "http://archive.ubuntu.com/ubuntu",
     "http://security.ubuntu.com/ubuntu",
 ]
+
 
 def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
@@ -133,4 +131,3 @@ def download_file(url, dest_path, quiet=True):
         print(f"Successfully downloaded {dest_path}")
 
     return dest_path
-
