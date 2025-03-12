@@ -75,7 +75,7 @@ def main():
     elif args.command == "search":
         search(args.app_names)
     elif args.command == "build":
-        print(f"\n[🛠 Building local AppImage... ]\n")
+        print(f"\n[ 🛠 Building local AppImage... ]\n")
 
         config = load_yaml_config(args.config)
         package_name = config["buildinfo"]["name"]
