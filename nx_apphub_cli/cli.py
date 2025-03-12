@@ -47,8 +47,8 @@ def main():
     subparser_update = subparsers.add_parser("update", help="Update one or more installed applications")
     subparser_update.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to update")
 
-    subparser_downgrade = subparsers.add_parser("downgrade", help="Downgrade an installed application")
-    subparser_downgrade.add_argument("app_name", type=str, help="Name of the application to downgrade")
+    subparser_downgrade = subparsers.add_parser("downgrade", help="Downgrade one or more installed applications")
+    subparser_downgrade.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to downgrade")
 
     subparser_search = subparsers.add_parser("search", help="Search for specific applications")
     subparser_search.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to search for")
@@ -71,7 +71,7 @@ def main():
     elif args.command == "update":
         update(args.app_names)
     elif args.command == "downgrade":
-        downgrade(args.app_name)
+        downgrade(args.app_names)
     elif args.command == "search":
         search(args.app_names)
     elif args.command == "build":

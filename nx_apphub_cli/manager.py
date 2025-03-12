@@ -344,76 +344,87 @@ def update(app_names):
                 print(f"❌ Critical error: Could not restore backup for {app_name}. Reason: {e}")
 
 
-def downgrade(app_name):
-    """Restore a specific backup of an AppBox."""
-    print(f"\n[ ⏳ Downgrading {app_name}... ]\n")
+def downgrade(app_names):
+    """Restore specific backups of multiple AppBoxes."""
 
-    # -- Find available backups.
+    # -- Ensure app_names is a list.
 
-    backups = sorted(backup_dir.glob(f"{app_name}-*-{system_arch}.tar"), reverse=True)
+    if isinstance(app_names, str):
+        app_names = [app_names]
 
-    if not backups:
-        print(f"❌ No backups found for {app_name}.\n")
-        return
+    print(f"\n[ ⏳ Downgrading: {', '.join(app_names)} ]\n")
 
-    # -- Display available backups.
+    for app_name in app_names:
+        print(f"\n🔽 Processing downgrade for: {app_name}...\n")
 
-    print("📦 Available backups:\n")
-    for i, backup in enumerate(backups, 1):
-        print(f"    {i}. {backup.name}")
+        # -- Find available backups.
 
-    # -- Select a backup.
+        backups = sorted(backup_dir.glob(f"{app_name}-*-{system_arch}.tar"), reverse=True)
 
-    while True:
-        choice = input("\n🔢 Enter the number of the backup to restore (default = latest): ").strip()
-        if choice == "":
-            index = 0
-            break
-        if choice.isdigit() and 1 <= int(choice) <= len(backups):
-            index = int(choice) - 1
-            break
-        print("⚠️ Invalid selection. Please enter a valid number.")
+        if not backups:
+            print(f"❌ No backups found for {app_name}.\n")
+            continue
 
-    selected_backup = backups[index]
+        # -- Display available backups.
 
-    print(f"\n🔄 Restoring backup: {selected_backup.name}...\n")
+        print("📦 Available backups:\n")
+        for i, backup in enumerate(backups, 1):
+            print(f"    {i}. {backup.name}")
 
-    try:
-        # -- Extract the backup.
+        # -- Select a backup.
 
-        with tarfile.open(selected_backup, "r") as tar:
-            extracted_files = tar.getnames()
-            tar.extractall(path=install_dir)
-
-        # -- Locate the restored AppBox based on extracted filenames.
-
-        restored_appbox = None
-        for file in extracted_files:
-            restored_path = install_dir / file
-            if restored_path.suffix == ".AppBox" and restored_path.exists():
-                restored_appbox = restored_path
+        while True:
+            choice = input(f"\n🔢 Enter the number of the backup to restore for {app_name} (default = latest): ").strip()
+            if choice == "":
+                index = 0
                 break
+            if choice.isdigit() and 1 <= int(choice) <= len(backups):
+                index = int(choice) - 1
+                break
+            print("⚠️ Invalid selection. Please enter a valid number.")
 
-        if not restored_appbox:
-            print(f"❌ Error: Restoration failed! No valid AppBox found in {install_dir}.\n")
-            return
+        selected_backup = backups[index]
 
-        # -- Restore executable permissions.
+        print(f"\n🔄 Restoring backup: {selected_backup.name}...\n")
 
-        restored_appbox.chmod(0o755)
-        print(f"✅ Successfully restored {app_name} to {restored_appbox.name}\n")
+        try:
+            # -- Extract the backup.
 
-        # -- Find and remove the newer version.
+            with tarfile.open(selected_backup, "r") as tar:
+                extracted_files = tar.getnames()
+                tar.extractall(path=install_dir)
 
-        for newer_version in install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"):
-            if newer_version != restored_appbox:
-                try:
-                    newer_version.unlink()
-                except OSError as e:
-                    print(f"⚠️ Warning: Failed to remove newer version {newer_version}. Reason: {e}")
+            # -- Locate the restored AppBox based on extracted filenames.
 
-    except (tarfile.TarError, OSError) as e:
-        print(f"❌ Error: Could not restore {app_name} from backup. Reason: {e}")
+            restored_appbox = None
+            for file in extracted_files:
+                restored_path = install_dir / file
+                if restored_path.suffix == ".AppBox" and restored_path.exists():
+                    restored_appbox = restored_path
+                    break
+
+            if not restored_appbox:
+                print(f"❌ Error: Restoration failed! No valid AppBox found in {install_dir}.\n")
+                continue
+
+            # -- Restore executable permissions.
+
+            restored_appbox.chmod(0o755)
+            print(f"✅ Successfully restored {app_name} to {restored_appbox.name}\n")
+
+            # -- Find and remove the newer version.
+
+            for newer_version in install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"):
+                if newer_version != restored_appbox:
+                    try:
+                        newer_version.unlink()
+                    except OSError as e:
+                        print(f"⚠️ Warning: Failed to remove newer version {newer_version}. Reason: {e}")
+
+        except (tarfile.TarError, OSError) as e:
+            print(f"❌ Error: Could not restore {app_name} from backup. Reason: {e}")
+
+    print("\n🎉 All requested applications have been processed!\n")
 
 
 # -- Export functions.
