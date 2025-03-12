@@ -139,28 +139,43 @@ def install(app_names):
 def remove(app_names):
     """Remove one or more installed AppBoxes."""
 
-    # -- Ensure app_names is a list.
-
+    # Ensure app_names is a list
     if isinstance(app_names, str):
         app_names = [app_names]
 
+    print(f"\n[ 🗑 Removing: {', '.join(app_names)} ]\n")
+
+    removed_apps = []
+    missing_apps = []
+
     for app_name in app_names:
-        print(f"\n[ 🗑 Removing: {app_name}... ]\n")
 
         # -- Find the installed AppBox matching the app name and system architecture.
 
         app_file = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
 
         if not app_file:
-            print(f"⚠️ Warning: No installed AppBox found for {app_name}. Skipping removal.")
+            missing_apps.append(f"    ❌ {app_name} (Not Installed)")
             continue
 
         try:
             app_file.unlink()
-            print(f"📦 Removed: {app_file}\n")
+            removed_apps.append(f"    ✅ {app_name} (Removed)")
         except PermissionError:
-            print(f"❌ Error: Cannot remove {app_file}. Is it in use?")
-            continue 
+            missing_apps.append(f"    ❌ {app_name} (Permission Denied)")
+            continue
+
+    # --Display removed apps.
+
+    if removed_apps:
+        print("🟢 Successfully Removed:\n" + "\n".join(removed_apps))
+
+    # -- Display apps that could not be removed.
+
+    if missing_apps:
+        print("🔴 Skipped:\n" + "\n".join(missing_apps))
+
+    print()
 
 
 def search(app_names):
