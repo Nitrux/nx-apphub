@@ -261,7 +261,7 @@ def patch_binary_rpath(binary_path, config):
 
     # -- Patch the RPATH of the executable.
     try:
-        rpath_value = f"$ORIGIN/{setlibpath}:$ORIGIN/{setlibpath}/{multiarch_triplet}"
+        rpath_value = f"$ORIGIN/../../{setlibpath}:$ORIGIN/../../{setlibpath}/{multiarch_triplet}"
         subprocess.run(
             ["patchelf", "--set-rpath", rpath_value, binary_path],
             check=True
