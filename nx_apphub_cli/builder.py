@@ -130,7 +130,6 @@ export PATH="$running_dir{setpath}:$running_dir/usr/sbin:$PATH"
 export XDG_DATA_DIRS="$running_dir/usr/share:$XDG_DATA_DIRS"
 export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
 export QT_PLUGIN_PATH="$running_dir{setlibpath}/qt5/plugins:$QT_PLUGIN_PATH"
-export LD_NOCACHE="1"
 
 
 # -- Run the application.
