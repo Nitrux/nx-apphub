@@ -151,11 +151,6 @@ if [ -z "${{GSETTINGS_SCHEMA_DIR+x}}" ]; then export GSETTINGS_SCHEMA_DIR=""; fi
 if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
 
 
-# -- Escape colons in the mount path to prevent LD_LIBRARY_PATH issues.
-
-safe_running_dir="${{running_dir//:/_}}"
-
-
 # -- Set environment variables for proper execution inside the AppImage.
 
 export PATH="$running_dir{setpath}:$PATH"
