@@ -41,8 +41,8 @@ def main():
     subparser_install = subparsers.add_parser("install", help="Install one or more applications")
     subparser_install.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to install")
 
-    subparser_remove = subparsers.add_parser("remove", help="Remove an installed application")
-    subparser_remove.add_argument("app_name", type=str, help="Name of the application to remove")
+    subparser_remove = subparsers.add_parser("remove", help="Remove one or more installed applications")
+    subparser_remove.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to remove")
 
     subparser_update = subparsers.add_parser("update", help="Update an installed application")
     subparser_update.add_argument("app_name", type=str, help="Name of the application to update")
@@ -67,7 +67,7 @@ def main():
     if args.command == "install":
         install(args.app_names)
     elif args.command == "remove":
-        remove(args.app_name)
+        remove(args.app_names)
     elif args.command == "update":
         update(args.app_name)
     elif args.command == "downgrade":

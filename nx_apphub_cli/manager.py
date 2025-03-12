@@ -136,25 +136,31 @@ def install(app_names):
     print("\n🎉 All requested applications have been processed!\n")
 
 
-def remove(app_name):
-    """Remove only the installed AppBox."""
-    
-    print(f"\n[ 🗑 Removing: {app_name}... ]\n")
+def remove(app_names):
+    """Remove one or more installed AppBoxes."""
 
-    # -- Find the installed AppBox matching the app name and system architecture.
+    # -- Ensure app_names is a list.
 
-    app_file = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
+    if isinstance(app_names, str):
+        app_names = [app_names]
 
-    if not app_file:
-        print(f"⚠️ Warning: No installed AppBox found for {app_name}. Skipping removal.")
-        return
+    for app_name in app_names:
+        print(f"\n[ 🗑 Removing: {app_name}... ]\n")
 
-    try:
-        app_file.unlink()
-        print(f"📦 Removed: {app_file}\n")
-    except PermissionError:
-        print(f"❌ Error: Cannot remove {app_file}. Is it in use?")
-        return
+        # -- Find the installed AppBox matching the app name and system architecture.
+
+        app_file = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
+
+        if not app_file:
+            print(f"⚠️ Warning: No installed AppBox found for {app_name}. Skipping removal.")
+            continue
+
+        try:
+            app_file.unlink()
+            print(f"📦 Removed: {app_file}\n")
+        except PermissionError:
+            print(f"❌ Error: Cannot remove {app_file}. Is it in use?")
+            continue 
 
 
 def search(app_names):
