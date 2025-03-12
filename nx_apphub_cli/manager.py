@@ -285,7 +285,7 @@ def update(app_names):
             continue
 
         if installed_version == latest_version:
-            print(f"\n✅ {app_name} is already up to date (version {installed_version}).\n")
+            print(f"✅ {app_name} is already up to date (version {installed_version}).\n")
             continue
 
         print(f"\n    🔄 New version available: {latest_version} (Installed: {installed_version})\n")
@@ -306,22 +306,42 @@ def update(app_names):
             print(f"📦 Backup created: {backup_name}")
         except Exception as e:
             print(f"❌ Error creating backup for {app_name}: {e}")
-            continue 
+            continue
+
+        # -- Delete the old AppImage to force install to proceed with creating a new one.
+
+        try:
+            installed_app.unlink()
+            print(f"🗑 Removed old AppImage: {installed_app}")
+        except OSError as e:
+            print(f"❌ Error deleting {installed_app}: {e}")
+            continue
 
         # -- Attempt installation of new version.
 
         install([app_name])
 
-        # -- Check if new AppBox exists before removing the old one.
+        # -- Check if new AppBox exists.
 
         new_appbox = install_dir / f"{app_name}-{latest_version}-{system_arch}.AppBox"
         if new_appbox.exists():
-            installed_app.unlink()
             print(f"✅ {app_name} successfully updated to version {latest_version}!\n")
         else:
-            print(f"❌ Update failed: Keeping existing {installed_app}\n")
+            print(f"❌ Update failed: No new AppImage found. Restoring backup...")
 
-    print("\n🎉 All requested applications have been processed!\n")
+            # -- Restore backup if update fails.
+
+            try:
+                with tarfile.open(backup_name, "r") as tar:
+                    tar.extractall(path=install_dir)
+                restored_appbox = install_dir / f"{app_name}-{installed_version}-{system_arch}.AppBox"
+                if restored_appbox.exists():
+                    restored_appbox.chmod(0o755)
+                    print(f"♻️ Restored {app_name} to version {installed_version}\n")
+                else:
+                    print(f"❌ Failed to restore {app_name}.")
+            except Exception as e:
+                print(f"❌ Critical error: Could not restore backup for {app_name}. Reason: {e}")
 
 
 def downgrade(app_name):
