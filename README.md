@@ -73,6 +73,8 @@ pipx install --system-site-packages git+https://github.com/Nitrux/nx-apphub-cli.
 
 # Usage
 
+To use NX AppHub CLI check the commands below.
+
 - `install`→ Install one or more applications.
 - `remove` → Remove one or more installed applications.
 - `update` → Update one or more installed applications.
@@ -80,6 +82,8 @@ pipx install --system-site-packages git+https://github.com/Nitrux/nx-apphub-cli.
 - `search` → Search for specific applications.
 - `build` → Build an AppImage from a YAML file.
     - _♦ Information: The command "build" is exposed to allow users to test YAML files before adding them to the curated apps repository._
+
+To create a YAML for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
 
 # Licensing
 
