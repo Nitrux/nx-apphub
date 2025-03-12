@@ -58,17 +58,20 @@ def install(app_name):
     print(f"\n[ ⚡ Installing: {app_name}... ]\n")
 
     # -- Ensure the repository is valid.
-
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
         print(f"⚠️ Warning: {repo_base_dir} is not a valid Git repository. Removing...")
         shutil.rmtree(repo_base_dir)
 
     if not (repo_base_dir / ".git").exists():
-        subprocess.run(["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     else:
-        subprocess.run(["git", "-C", str(repo_base_dir), "pull"], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "-C", str(repo_base_dir), "pull"],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
 
     # -- Load YAML and determine AppBox filename.
 
@@ -79,18 +82,20 @@ def install(app_name):
 
     config = load_yaml_config(app_yaml_path)
     app_version = config["buildinfo"].get("version", "unknown")
-    appbox_path = install_dir / f"{app_name}-{app_version}-{system_arch}.AppBox"
 
-    # -- Check if version is missing from YAML.
+    # -- Ensure version is valid.
 
     if not app_version or app_version == "unknown":
         print(f"❌ Error: No valid version found for {app_name}. Aborting installation.")
         return
 
-    # -- Check if already installed.
+    # -- Check if **any version** of the AppImage is already installed.
 
-    if appbox_path.exists():
-        print(f"ℹ️  {app_name} {app_version} is already installed. Skipping installation.")
+    installed_appbox = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
+    
+    if installed_appbox:
+        installed_version = installed_appbox.stem.split("-")[1]
+        print(f"ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.\n")
         return
 
     # -- Ensure `distrorepo` is explicitly defined.
