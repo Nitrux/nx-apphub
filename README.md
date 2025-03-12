@@ -53,11 +53,16 @@ NX AppHub CLI requires the following utilities to function properly:
 
 # Installation
 
-To install Nx AppHub CLI we recommend using pipx.
+To install NX AppHub CLI we recommend using pipx.
+
+### Single-user
 
 ```
 pipx install git+https://github.com/Nitrux/nx-apphub-cli.git
 ```
+
+
+### System-wide
 
 ```
 pipx install --system-site-packages git+https://github.com/Nitrux/nx-apphub-cli.git
@@ -65,12 +70,12 @@ pipx install --system-site-packages git+https://github.com/Nitrux/nx-apphub-cli.
 
 # Usage
 
-`install`→ Install one or more applications.
-`remove` → Remove one or more installed applications.
-`update` → Update one or more installed applications.
-`downgrade` → Downgrade one or more installed applications.
-`search` → Search for specific applications.
-`build` → Build an AppImage from a YAML file.
+- `install`→ Install one or more applications.
+- `remove` → Remove one or more installed applications.
+- `update` → Update one or more installed applications.
+- `downgrade` → Downgrade one or more installed applications.
+- `search` → Search for specific applications.
+- `build` → Build an AppImage from a YAML file.
 
 # Licensing
 
