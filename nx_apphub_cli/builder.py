@@ -28,7 +28,7 @@ from pathlib import Path
 import shutil
 import platform
 import requests
-from nx_apphub_cli.utils import ensure_appimagetool, cleanup_cache
+from nx_apphub_cli.utils import ensure_appimagetool, cleanup_cache, get_architecture
 
 
 # -- Base working directory for all packages.
@@ -68,11 +68,45 @@ def find_system_icon(icon_name, preferred_theme=None):
     return None
 
 
-# -- Create the AppRun for the AppImage.
-
-def generate_apprun(app_dir, exec_path):
+def generate_apprun(app_dir, config):
     """Generate the AppRun script dynamically inside the AppImage."""
     apprun_path = app_dir / "AppRun"
+
+    # -- Fetch settings from YAML. Exit if missing.
+
+    exec_path = config["apprunconf"].get("exec", "").strip()
+    setlibpath = config["apprunconf"].get("setlibpath", "").strip()
+    setpath = config["apprunconf"].get("setpath", "").strip()
+
+    if not exec_path:
+        print(f"❌ Error: 'exec' field is missing in {config['buildinfo']['name']}'s YAML (apprunconf). Aborting.")
+        exit(1)
+
+    if not setlibpath:
+        print(f"❌ Error: 'setlibpath' field is missing in {config['buildinfo']['name']}'s YAML (apprunconf). Using default: /usr/lib")
+        setlibpath = "/usr/lib"
+
+    if not setpath:
+        print(f"❌ Error: 'setpath' field is missing in {config['buildinfo']['name']}'s YAML (apprunconf). Using default: /usr/bin")
+        setpath = "/usr/bin"
+
+    # -- Determine the correct multiarch triplet dynamically.
+
+    arch = get_architecture()
+    arch_map = {
+        "x86_64": "x86_64-linux-gnu",
+        "aarch64": "aarch64-linux-gnu",
+        "arm64": "aarch64-linux-gnu",
+    }
+
+    if arch not in arch_map:
+        print(f"❌ Error: Unsupported architecture detected: {arch}. Aborting.")
+        exit(1)
+
+    multiarch_triplet = arch_map[arch]
+
+    # -- Construct the script.
+
     apprun_script = f"""#!/usr/bin/env bash
 
 #############################################################################################################################################################################
@@ -109,16 +143,41 @@ realpath=$(readlink -f "$0")
 running_dir=$(dirname "$realpath")
 
 
+# -- Ensure LD_LIBRARY_PATH is always set to avoid unbound variable errors.
+
+if [ -z "${{LD_LIBRARY_PATH+x}}" ]; then export LD_LIBRARY_PATH=""; fi
+if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS="/usr/local/share:/usr/share"; fi
+if [ -z "${{GSETTINGS_SCHEMA_DIR+x}}" ]; then export GSETTINGS_SCHEMA_DIR=""; fi
+if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
+
+
 # -- Set environment variables for proper execution inside the AppImage.
 
-export PATH="$running_dir/usr/bin:$running_dir/usr/sbin:$running_dir/usr/games:$running_dir/bin:$running_dir/sbin:$PATH"
-export LD_LIBRARY_PATH="${{LD_LIBRARY_PATH:-}}:$running_dir/usr/lib:$running_dir/usr/lib/x86_64-linux-gnu:$running_dir/lib"
-export XDG_DATA_DIRS="${{XDG_DATA_DIRS:-}}:$running_dir/usr/share"
-export GSETTINGS_SCHEMA_DIR="${{GSETTINGS_SCHEMA_DIR:-}}:$running_dir/usr/share/glib-2.0/schemas"
-export QT_PLUGIN_PATH="${{QT_PLUGIN_PATH:-}}:$running_dir/usr/lib/qt5/plugins"
+export PATH="$running_dir{setpath}"
+export LD_LIBRARY_PATH="$running_dir{setlibpath}:$running_dir/usr/lib/{multiarch_triplet}/libslang.so.2"
+export XDG_DATA_DIRS="$running_dir/usr/share"
+export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas"
+export QT_PLUGIN_PATH="$running_dir/usr/lib/qt5/plugins"
+
+
+# -- Debugging: Print LD_LIBRARY_PATH before searching.
+
+echo "🛠 Full Library Search Path:"
+echo "LD_LIBRARY_PATH=\"$LD_LIBRARY_PATH\""
+
+# -- Ensure LD_LIBRARY_PATH is properly split
+IFS=':'  # Set delimiter to ':'
+for path in $LD_LIBRARY_PATH; do
+    if [ -n "$path" ] && [ -d "$path" ]; then
+        echo "🔍 Searching in: $path"
+        find "$path" -name 'libslang.so*' 2>/dev/null
+    fi
+done
+unset IFS  # Reset IFS after use
 
 
 # -- Run the application.
+
 exec "$running_dir/{exec_path}" "$@"
 """
 
@@ -255,7 +314,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     # -- Generate metadata & AppRun.
 
     print(f"📌 Setting up AppRun and metadata for: {app_name}...")
-    generate_apprun(app_dir, f"./usr/bin/{new_binary_path.name}")
+    generate_apprun(app_dir, config)
     fix_desktop_entry(app_name, app_dir, new_binary_path)
     copy_system_icon(app_name, app_dir, config["buildinfo"].get("iconpath", None))
 
