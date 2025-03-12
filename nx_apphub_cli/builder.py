@@ -151,29 +151,18 @@ if [ -z "${{GSETTINGS_SCHEMA_DIR+x}}" ]; then export GSETTINGS_SCHEMA_DIR=""; fi
 if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
 
 
+# -- Escape colons in the mount path to prevent LD_LIBRARY_PATH issues.
+
+safe_running_dir="${{running_dir//:/_}}"
+
+
 # -- Set environment variables for proper execution inside the AppImage.
 
-export PATH="$running_dir{setpath}"
-export LD_LIBRARY_PATH="$running_dir{setlibpath}:$running_dir/usr/lib/{multiarch_triplet}/libslang.so.2"
-export XDG_DATA_DIRS="$running_dir/usr/share"
-export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas"
-export QT_PLUGIN_PATH="$running_dir/usr/lib/qt5/plugins"
-
-
-# -- Debugging: Print LD_LIBRARY_PATH before searching.
-
-echo "🛠 Full Library Search Path:"
-echo "LD_LIBRARY_PATH=\"$LD_LIBRARY_PATH\""
-
-# -- Ensure LD_LIBRARY_PATH is properly split
-IFS=':'  # Set delimiter to ':'
-for path in $LD_LIBRARY_PATH; do
-    if [ -n "$path" ] && [ -d "$path" ]; then
-        echo "🔍 Searching in: $path"
-        find "$path" -name 'libslang.so*' 2>/dev/null
-    fi
-done
-unset IFS  # Reset IFS after use
+export PATH="$running_dir{setpath}:$PATH"
+export LD_LIBRARY_PATH="$safe_running_dir{setlibpath}:$safe_running_dir{setlibpath}/{multiarch_triplet}:$LD_LIBRARY_PATH"
+export XDG_DATA_DIRS="$running_dir/usr/share:$XDG_DATA_DIRS"
+export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
+export QT_PLUGIN_PATH="$running_dir/usr/lib/qt5/plugins:$QT_PLUGIN_PATH"
 
 
 # -- Run the application.
