@@ -30,6 +30,7 @@ import platform
 import requests
 from nx_apphub_cli.utils import ensure_appimagetool, cleanup_cache, get_architecture
 from nx_apphub_cli.config import get_apprunconf_value
+from datetime import datetime
 
 
 # -- Base working directory for all packages.
@@ -79,14 +80,28 @@ def generate_apprun(app_dir, config):
     setpath = get_apprunconf_value(config, "setpath", "/usr/bin")
     setlibpath = get_apprunconf_value(config, "setlibpath", "/usr/lib")
 
+    # -- Fetch additional environment variables (default to empty dict).
+
+    envvars = config.get("apprunconf", {}).get("envvars", {})
+
+    if not isinstance(envvars, dict):
+        print(f"⚠️ Warning: 'envvars' in YAML is not a dictionary. Ignoring...")
+        envvars = {}
+
+    # -- Generate environment variable exports dynamically.
+
+    env_exports = "\n".join([f'export {key}="{value}"' for key, value in envvars.items()])
+
     # -- Construct the script.
+
+    current_year = datetime.now().year
 
     apprun_script = f"""#!/usr/bin/env bash
 
 #############################################################################################################################################################################
 #   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
 #                                                                                                                                                                           #
-#   Copyright <2025> <Nitrux Latinoamericana <hello@nxos.org>>                                                                                                              #
+#   Copyright <{current_year}> <Nitrux Latinoamericana <hello@nxos.org>>                                                                                                              #
 #                                                                                                                                                                           #
 #   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
 #                                                                                                                                                                           #
@@ -117,9 +132,10 @@ realpath=$(readlink -f "$0")
 running_dir=$(dirname "$realpath")
 
 
-# -- Ensure LD_LIBRARY_PATH is always set to avoid unbound variable errors.
+# -- Ensure environment variables are always set to avoid unbound variable errors.
 
-if [ -z "${{LD_LIBRARY_PATH+x}}" ]; then export LD_LIBRARY_PATH=""; fi
+if [ -z "${{PATH+x}}" ]; then export PATH=""; fi
+if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 if [ -z "${{GSETTINGS_SCHEMA_DIR+x}}" ]; then export GSETTINGS_SCHEMA_DIR=""; fi
 if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
 
@@ -131,6 +147,7 @@ export XDG_DATA_DIRS="$running_dir/usr/share:$XDG_DATA_DIRS"
 export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
 export QT_PLUGIN_PATH="$running_dir{setlibpath}/qt5/plugins:$QT_PLUGIN_PATH"
 
+{env_exports}
 
 # -- Run the application.
 
