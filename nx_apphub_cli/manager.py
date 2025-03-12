@@ -53,9 +53,13 @@ for directory in [repo_base_dir, repo_dir, backup_dir, install_dir]:
     directory.mkdir(parents=True, exist_ok=True)
 
 
-def install(app_name):
-    """Fetch YAML metadata, build AppImage, and store metadata."""
-    print(f"\n[ ⚡ Installing: {app_name}... ]\n")
+def install(app_names):
+    """Fetch YAML metadata, build AppImage, and store metadata for multiple applications."""
+    
+    if not isinstance(app_names, list):
+        app_names = [app_names]
+
+    print(f"\n[ ⚡ Installing: {', '.join(app_names)} ]\n")
 
     # -- Ensure the repository is valid.
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
@@ -73,58 +77,63 @@ def install(app_name):
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
-    # -- Load YAML and determine AppBox filename.
+    for app_name in app_names:
+        print(f"\n[ 🚀 Processing: {app_name} ]\n")
 
-    app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
-    if not app_yaml_path.exists():
-        print(f"❌ Error: No YAML found for {app_name} ({system_arch}) in repository.")
-        return
+        # -- Load YAML and determine AppBox filename.
 
-    config = load_yaml_config(app_yaml_path)
-    app_version = config["buildinfo"].get("version", "unknown")
+        app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
+        if not app_yaml_path.exists():
+            print(f"❌ Error: No YAML found for {app_name} ({system_arch}) in repository.")
+            continue
 
-    # -- Ensure version is valid.
+        config = load_yaml_config(app_yaml_path)
+        app_version = config["buildinfo"].get("version", "unknown")
 
-    if not app_version or app_version == "unknown":
-        print(f"❌ Error: No valid version found for {app_name}. Aborting installation.")
-        return
+        # -- Ensure version is valid.
 
-    # -- Check if **any version** of the AppImage is already installed.
+        if not app_version or app_version == "unknown":
+            print(f"❌ Error: No valid version found for {app_name}. Skipping installation.")
+            continue
 
-    installed_appbox = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
-    
-    if installed_appbox:
-        installed_version = installed_appbox.stem.split("-")[1]
-        print(f"ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.\n")
-        return
+        # -- Check if **any version** of the AppImage is already installed.
 
-    # -- Ensure `distrorepo` is explicitly defined.
+        installed_appbox = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
 
-    distrorepo = config["buildinfo"].get("distrorepo")
-    if not distrorepo:
-        print(f"❌ Error: No 'distrorepo' specified for {app_name}. Aborting installation.")
-        return
+        if installed_appbox:
+            installed_version = installed_appbox.stem.split("-")[1]
+            print(f"ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.\n")
+            continue
 
-    # -- Process dependencies.
+        # -- Ensure `distrorepo` is explicitly defined.
 
-    print("📥 Downloading dependencies...")
-    for dep in config["buildinfo"].get("deps", []):
-        deb_path = get_latest_deb(dep, distrorepo, app_name)
-        extract_deb(deb_path, app_name)
+        distrorepo = config["buildinfo"].get("distrorepo")
+        if not distrorepo:
+            print(f"❌ Error: No 'distrorepo' specified for {app_name}. Skipping installation.")
+            continue
 
-    # -- Build AppImage.
+        # -- Process dependencies.
 
-    print("\n🛠 Building AppImage...\n")
-    prepare_appimage(config, install_mode=True)
+        print("📥 Downloading dependencies...")
+        for dep in config["buildinfo"].get("deps", []):
+            deb_path = get_latest_deb(dep, distrorepo, app_name)
+            extract_deb(deb_path, app_name)
 
-    # -- Verify new AppBox exists before final confirmation.
+        # -- Build AppImage.
 
-    built_appbox = install_dir / f"{app_name}-{app_version}-{system_arch}.AppBox"
-    if not built_appbox.exists():
-        print(f"❌ Error: Failed to find the built {built_appbox} file. Aborting installation.")
-        return
+        print("\n🛠 Building AppImage...\n")
+        prepare_appimage(config, install_mode=True)
 
-    print(f"\n✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
+        # -- Verify new AppBox exists before final confirmation.
+
+        built_appbox = install_dir / f"{app_name}-{app_version}-{system_arch}.AppBox"
+        if not built_appbox.exists():
+            print(f"❌ Error: Failed to find the built {built_appbox} file. Skipping installation.")
+            continue
+
+        print(f"\n✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
+
+    print("\n🎉 All requested applications have been processed!\n")
 
 
 def remove(app_name):

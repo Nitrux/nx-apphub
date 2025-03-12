@@ -38,8 +38,8 @@ def main():
 
     # -- Management commands.
 
-    subparser_install = subparsers.add_parser("install", help="Install an application")
-    subparser_install.add_argument("app_name", type=str, help="Name of the application to install")
+    subparser_install = subparsers.add_parser("install", help="Install one or more applications")
+    subparser_install.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to install")
 
     subparser_remove = subparsers.add_parser("remove", help="Remove an installed application")
     subparser_remove.add_argument("app_name", type=str, help="Name of the application to remove")
@@ -65,7 +65,7 @@ def main():
         sys.exit(1)
 
     if args.command == "install":
-        install(args.app_name)
+        install(args.app_names)
     elif args.command == "remove":
         remove(args.app_name)
     elif args.command == "update":
