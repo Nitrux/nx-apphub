@@ -243,9 +243,11 @@ def patch_binary_rpath(binary_path, config):
     """Patch the RPATH of the application binary to use $ORIGIN with the correct paths."""
 
     # -- Fetch settings from YAML.
+
     setlibpath = get_apprunconf_value(config, "setlibpath", "/usr/lib")
 
     # -- Determine multiarch triplet dynamically.
+
     arch_map = {
         "x86_64": "x86_64-linux-gnu",
         "aarch64": "aarch64-linux-gnu",
@@ -260,6 +262,7 @@ def patch_binary_rpath(binary_path, config):
         return
 
     # -- Patch the RPATH of the executable.
+
     try:
         rpath_value = f"$ORIGIN/../../{setlibpath}:$ORIGIN/../../{setlibpath}/{multiarch_triplet}"
         subprocess.run(
