@@ -48,13 +48,14 @@ git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
 
 
 # -- Create all necessary directories.
+
 for directory in [repo_base_dir, repo_dir, backup_dir, install_dir]:
     directory.mkdir(parents=True, exist_ok=True)
 
 
 def install(app_name):
     """Fetch YAML metadata, build AppImage, and store metadata."""
-    print(f"\n[ ⚡ Installing {app_name}... ]\n")
+    print(f"\n[ ⚡ Installing: {app_name}... ]\n")
 
     # -- Ensure the repository is valid.
 
@@ -107,6 +108,7 @@ def install(app_name):
         extract_deb(deb_path, app_name)
 
     # -- Build AppImage.
+
     print("\n🛠 Building AppImage...\n")
     prepare_appimage(config, install_mode=True)
 
@@ -117,13 +119,13 @@ def install(app_name):
         print(f"❌ Error: Failed to find the built {built_appbox} file. Aborting installation.")
         return
 
-    print(f"\n✅ Installation successful!\n📦 Installed at: {built_appbox}\n")
+    print(f"\n✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
 
 
 def remove(app_name):
     """Remove only the installed AppBox."""
     
-    print(f"\n[ 🗑 Removing {app_name}... ]\n")
+    print(f"\n[ 🗑 Removing: {app_name}... ]\n")
 
     # -- Find the installed AppBox matching the app name and system architecture.
 
@@ -161,7 +163,7 @@ def search(app_names):
             ["git", "-C", str(repo_base_dir), "pull"],
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-
+    
     found_apps = []
     missing_apps = []
 
@@ -175,11 +177,11 @@ def search(app_names):
             missing_apps.append(f"    ❌ {app_name}")
 
     if found_apps:
-        print("\n🟢 Found Applications:")
+        print("\n🟢 Found Applications:\n")
         print("\n".join(found_apps), "\n")
     
     if missing_apps:
-        print("\n🔴 Not Found:")
+        print("\n🔴 Not Found:\n")
         print("\n".join(missing_apps), "\n")
 
 
