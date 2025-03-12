@@ -75,6 +75,8 @@ def main():
     elif args.command == "search":
         search(args.app_names)
     elif args.command == "build":
+        print(f"\n[🛠 Building local AppImage... ]\n")
+
         config = load_yaml_config(args.config)
         package_name = config["buildinfo"]["name"]
 
@@ -88,7 +90,7 @@ def main():
             extract_deb(deb_path, package_name)
 
         prepare_appimage(config)
-        print("AppImage creation complete!")
+        print("\n✅ AppImage creation complete!\n")
     else:
         parser.print_help()
         sys.exit(1)
