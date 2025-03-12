@@ -28,7 +28,7 @@ from nx_apphub_cli.config import load_yaml_config
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
-from nx_apphub_cli.manager import install, remove, update, downgrade, backup, search
+from nx_apphub_cli.manager import install, remove, update, downgrade, search
 
 
 def main():
@@ -49,9 +49,6 @@ def main():
 
     subparser_downgrade = subparsers.add_parser("downgrade", help="Downgrade an installed application")
     subparser_downgrade.add_argument("app_name", type=str, help="Name of the application to downgrade")
-
-    subparser_backup = subparsers.add_parser("backup", help="Backup an installed application")
-    subparser_backup.add_argument("app_name", type=str, help="Name of the application to backup")
 
     subparser_search = subparsers.add_parser("search", help="Search for specific applications")
     subparser_search.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to search for")
@@ -75,8 +72,6 @@ def main():
         update(args.app_name)
     elif args.command == "downgrade":
         downgrade(args.app_name)
-    elif args.command == "backup":
-        backup(args.app_name)
     elif args.command == "search":
         search(args.app_names)
     elif args.command == "build":

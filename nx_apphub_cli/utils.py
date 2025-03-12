@@ -61,11 +61,10 @@ def cleanup_cache(package_name=None):
         target_dir = cache_dir / package_name
 
         if target_dir.exists():
-            print(f"🧹 Cleaning up cache for: {package_name}...")
+            print(f"🧹 Cleaning up build cache for: {package_name}...")
             shutil.rmtree(target_dir, ignore_errors=True)
-            print(f"✅ Cache removed for: {package_name}")
         else:
-            print(f"⚠️ No cache found for: {package_name}. Skipping cleanup.")
+            print(f"⚠️ Warning: No build cache found for: {package_name}. Skipping cleanup.")
     else:
         print("ℹ️ Skipping full cache cleanup. Only removing package-specific cache.")
 
