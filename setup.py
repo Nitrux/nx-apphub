@@ -37,13 +37,13 @@ setup(
             "nx-apphub-cli=nx_apphub_cli.cli:main"
         ]
     },
-    author="Your Name",
-    author_email="your.email@example.com",
-    description="A tool to convert .deb packages to AppImages using YAML configuration.",
-    url="https://github.com/yourrepo/nx-apphub-cli",
+    author="Uri Herrera",
+    author_email="uri_herrera@nxos.org",
+    description="NX AppHub CLI is a lightweight command-line tool for managing and building applications in Nitrux as AppImages.",
+    url="https://github.com/Nitrux/nx-apphub",
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: BSD 3 Clause License",
         "Operating System :: POSIX :: Linux"
     ],
     python_requires='>=3.6',
