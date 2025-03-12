@@ -154,7 +154,7 @@ if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
 # -- Set environment variables for proper execution inside the AppImage.
 
 export PATH="$running_dir{setpath}:$PATH"
-export LD_LIBRARY_PATH="$safe_running_dir{setlibpath}:$safe_running_dir{setlibpath}/{multiarch_triplet}:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$running_dir{setlibpath}:$running_dir{setlibpath}/{multiarch_triplet}:$LD_LIBRARY_PATH"
 export XDG_DATA_DIRS="$running_dir/usr/share:$XDG_DATA_DIRS"
 export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
 export QT_PLUGIN_PATH="$running_dir/usr/lib/qt5/plugins:$QT_PLUGIN_PATH"
