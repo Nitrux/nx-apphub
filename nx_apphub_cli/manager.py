@@ -62,6 +62,7 @@ def install(app_names):
     print(f"\n[ ⚡ Installing: {', '.join(app_names)} ]\n")
 
     # -- Ensure the repository is valid.
+
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
         print(f"⚠️ Warning: {repo_base_dir} is not a valid Git repository. Removing...")
         shutil.rmtree(repo_base_dir)
@@ -139,7 +140,8 @@ def install(app_names):
 def remove(app_names):
     """Remove one or more installed AppBoxes."""
 
-    # Ensure app_names is a list
+    # -- Ensure app_names is a list.
+
     if isinstance(app_names, str):
         app_names = [app_names]
 
@@ -220,9 +222,15 @@ def search(app_names):
         print("\n".join(missing_apps), "\n")
 
 
-def update(app_name):
-    """Update an AppBox only if a newer version is available."""
-    print(f"\n[ 📤 Updating {app_name}... ]\n")
+def update(app_names):
+    """Update one or more AppBoxes only if a newer version is available."""
+
+    # -- Ensure app_names is a list.
+
+    if isinstance(app_names, str):
+        app_names = [app_names]
+
+    print(f"\n[ 📤 Updating: {', '.join(app_names)} ]\n")
 
     # -- Ensure the repository is up to date.
 
@@ -240,72 +248,80 @@ def update(app_name):
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
-    # -- Find installed AppBox.
+    for app_name in app_names:
+        print(f"\n[ 🔄 Checking updates for: {app_name} ]\n")
 
-    installed_app = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
+        # -- Find installed AppBox.
 
-    if not installed_app:
-        print(f"❌ Error: {app_name} is not installed. Cannot update.\n")
-        return
+        installed_app = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
 
-    # -- Extract version from installed file.
+        if not installed_app:
+            print(f"❌ Error: {app_name} is not installed. Cannot update.\n")
+            continue
 
-    installed_parts = installed_app.stem.split("-")
-    if len(installed_parts) < 2:
-        print(f"❌ Error: Could not determine installed version for {app_name}.\n")
-        return
+        # -- Extract version from installed file.
 
-    installed_version = "-".join(installed_parts[1:-1])
+        installed_parts = installed_app.stem.split("-")
+        if len(installed_parts) < 2:
+            print(f"❌ Error: Could not determine installed version for {app_name}.\n")
+            continue
 
-    # -- Validate YAML existence.
+        installed_version = "-".join(installed_parts[1:-1])
 
-    app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
-    if not app_yaml_path.exists():
-        print(f"❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
-        return
+        # -- Validate YAML existence.
 
-    # -- Load YAML and check latest version.
+        app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
+        if not app_yaml_path.exists():
+            print(f"❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
+            continue
 
-    config = load_yaml_config(app_yaml_path)
-    latest_version = config["buildinfo"].get("version", "unknown")
+        # -- Load YAML and check latest version.
 
-    if not latest_version or latest_version == "unknown":
-        print(f"❌ Error: No valid version information found for {app_name}. Aborting update.\n")
-        return
+        config = load_yaml_config(app_yaml_path)
+        latest_version = config["buildinfo"].get("version", "unknown")
 
-    if installed_version == latest_version:
-        print(f"\n✅ {app_name} is already up to date (version {installed_version}).\n")
-        return
+        if not latest_version or latest_version == "unknown":
+            print(f"❌ Error: No valid version information found for {app_name}. Aborting update.\n")
+            continue
 
-    print(f"\n    🔄 New version available: {latest_version} (Installed: {installed_version})\n")
+        if installed_version == latest_version:
+            print(f"\n✅ {app_name} is already up to date (version {installed_version}).\n")
+            continue
 
-    # -- Remove executable permission before backup.
+        print(f"\n    🔄 New version available: {latest_version} (Installed: {installed_version})\n")
 
-    try:
-        installed_app.chmod(0o644)
-    except OSError as e:
-        print(f"⚠️ Warning: Failed to modify permissions of {installed_app}. Reason: {e}")
+        # -- Remove executable permission before backup.
 
-    # -- Create backup.
+        try:
+            installed_app.chmod(0o644)
+        except OSError as e:
+            print(f"⚠️ Warning: Failed to modify permissions of {installed_app}. Reason: {e}")
 
-    backup_name = backup_dir / f"{app_name}-{installed_version}-{system_arch}.tar"
-    with tarfile.open(backup_name, "w") as tar:
-        tar.add(installed_app, arcname=installed_app.name)
+        # -- Create backup safely.
 
-    print(f"📦 Backup created: {backup_name}")
+        backup_name = backup_dir / f"{app_name}-{installed_version}-{system_arch}.tar"
+        try:
+            with tarfile.open(backup_name, "w") as tar:
+                tar.add(installed_app, arcname=installed_app.name)
+            print(f"📦 Backup created: {backup_name}")
+        except Exception as e:
+            print(f"❌ Error creating backup for {app_name}: {e}")
+            continue 
 
-    # -- Attempt installation of new version.
+        # -- Attempt installation of new version.
 
-    install(app_name)
+        install([app_name])
 
-    # -- Check if new AppBox exists before removing the old one.
+        # -- Check if new AppBox exists before removing the old one.
 
-    new_appbox = install_dir / f"{app_name}-{latest_version}-{system_arch}.AppBox"
-    if new_appbox.exists():
-        installed_app.unlink()
-        print(f"✅ {app_name} successfully updated to version {latest_version}!\n")
-    else:
-        print(f"❌ Update failed: Keeping existing {installed_app}\n")
+        new_appbox = install_dir / f"{app_name}-{latest_version}-{system_arch}.AppBox"
+        if new_appbox.exists():
+            installed_app.unlink()
+            print(f"✅ {app_name} successfully updated to version {latest_version}!\n")
+        else:
+            print(f"❌ Update failed: Keeping existing {installed_app}\n")
+
+    print("\n🎉 All requested applications have been processed!\n")
 
 
 def downgrade(app_name):
