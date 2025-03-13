@@ -72,7 +72,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     deb_dir.mkdir(parents=True, exist_ok=True)
 
     if not repos:
-        print(f"❌ Error: No valid repositories provided for {pkg_name}. Aborting.")
+        print(f"❌ Error: No valid repositories provided for {pkg_name}. Aborting.\n")
         sys.exit(1)
 
     for repo in repos:
@@ -110,7 +110,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
 
                 return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
 
-    print(f"❌ Error: Failed to find package '{pkg_name}' in any repository.")
+    print(f"❌ Error: Failed to find package '{pkg_name}' in any repository.\n")
     sys.exit(1)
 
 
@@ -134,7 +134,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name):
             return match.group(1)
 
     except requests.RequestException as e:
-        print(f"❌ Error: Failed to fetch metadata from {packages_url}: {e}")
+        print(f"❌ Error: Failed to fetch metadata from {packages_url}: {e}\n")
 
     return None
 
@@ -148,7 +148,7 @@ def download_file(url, dest_path, quiet=True):
 
     response = requests.get(url, stream=True)
     if response.status_code != 200:
-        print(f"❌ Error: Failed to download {url}. HTTP {response.status_code}")
+        print(f"❌ Error: Failed to download {url}. HTTP {response.status_code}\n")
         return None
 
     with open(dest_path, "wb") as f:

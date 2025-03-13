@@ -70,7 +70,7 @@ def cleanup_cache(package_name=None):
         print("ℹ️ Skipping full cache cleanup. Only removing package-specific cache.")
 
 
-def ensure_appimagetool(quiet=True):
+def get_appimagetool(quiet=True):
     """Ensure appimagetool is available by downloading it if missing."""
     if not appimagetool_path.exists():
         if not quiet:

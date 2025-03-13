@@ -24,7 +24,7 @@
 
 import sys
 import argparse
-from nx_apphub_cli.config import load_yaml_config
+from nx_apphub_cli.config import load_yaml_config, validate_yaml_config
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
@@ -78,6 +78,11 @@ def main():
         print(f"\n[ 🛠 Building local AppImage... ]\n")
 
         config = load_yaml_config(args.config)
+
+        # -- Validate the YAML before doing anything else.
+
+        validate_yaml_config(config)
+
         package_name = config["buildinfo"]["name"]
 
         setup_appimage_directories(package_name, config["buildinfo"]["binarypath"])

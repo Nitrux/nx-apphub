@@ -54,6 +54,49 @@ def load_yaml_config(config_path):
         sys.exit(1)
 
 
-def get_apprunconf_value(config, key, default=None):
-    """Fetch values from the 'apprunconf' section of the YAML configuration."""
-    return config.get("apprunconf", {}).get(key, default).strip() if config else default
+def get_apprunconf_value(config, key, default=None, expected_type=None):
+    """Fetch values from the 'apprunconf' section of the YAML configuration with type validation."""
+    value = config.get("apprunconf", {}).get(key, default)
+
+    if expected_type and not isinstance(value, expected_type):
+        print(f"❌ Error: Invalid type for 'apprunconf.{key}'. Expected {expected_type.__name__}, got {type(value).__name__}.\n")
+        print("🛑 Please correct the YAML configuration before proceeding.\n")
+        sys.exit(1)
+
+    return value.strip() if isinstance(value, str) else value
+
+
+def validate_yaml_config(config):
+    """Validate the structure and types of the YAML configuration."""
+
+    required_sections = {
+        "buildinfo": {
+            "name": str,
+            "version": str,
+            "binarypath": str
+        },
+        "apprunconf": {
+            "exec": str,
+            "setpath": str,
+            "setlibpath": str,
+            "envvars": dict,
+            "prebuild_commands": list
+        }
+    }
+
+    for section, keys in required_sections.items():
+        if section not in config:
+            print(f"❌ Error: Missing required section '{section}' in YAML.\n")
+            sys.exit(1)
+
+        for key, expected_type in keys.items():
+            value = config[section].get(key)
+            if value is None:
+                print(f"❌ Error: Missing required key '{key}' in section '{section}' of YAML.\n")
+                sys.exit(1)
+
+            if not isinstance(value, expected_type):
+                print(f"❌ Error: Invalid type for '{section}.{key}'. Expected {expected_type.__name__}, got {type(value).__name__}.\n")
+                sys.exit(1)
+
+    print("✅ YAML validation passed successfully.\n")

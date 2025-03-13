@@ -28,7 +28,7 @@ from pathlib import Path
 import shutil
 import platform
 import requests
-from nx_apphub_cli.utils import ensure_appimagetool, cleanup_cache, get_architecture
+from nx_apphub_cli.utils import get_appimagetool, cleanup_cache, get_architecture
 from nx_apphub_cli.config import get_apprunconf_value
 from datetime import datetime
 
@@ -39,8 +39,20 @@ app_base_dir = Path.home() / ".cache/nx-apphub-cli"
 local_bin = Path.home() / ".local/bin"
 appimagetool_path = local_bin / "appimagetool"
 
+def setup_appimage_directories(app_name, binary_path):
+    """Ensure required directories exist for AppImage building."""
+    package_dir = app_base_dir / app_name
+    app_dir = package_dir / "AppDir"
+    bin_dir = app_dir / "usr/bin"
 
-# -- Get an icon from the default icon themes. Search in /usr/share/icons and use /usr/share/pixmaps as fallback.
+    app_dir.mkdir(parents=True, exist_ok=True)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    extracted_binary_path = app_dir / binary_path.lstrip("/")
+    return extracted_binary_path, app_dir
+
+
+# -- Get an icon from the default icon themes. Search in /usr/share/icons and use /usr/share/pixmaps as a fallback.
 
 icon_themes = ["breeze-dark", "breeze", "Adwaita", "Luv", "hicolor"]
 
@@ -70,23 +82,72 @@ def find_system_icon(icon_name, preferred_theme=None):
     return None
 
 
+def copy_system_icon(app_name, app_dir, icon_path):
+    """Copy the system icon if none exists in the AppDir."""
+    icon_dest = app_dir / f"{app_name}.png"
+
+    if icon_path:
+        icon_path = Path(icon_path)
+        if icon_path.exists():
+            shutil.copy(icon_path, icon_dest)
+            print(f"Copied provided icon to {icon_dest}")
+            return
+
+    # print(f"No provided icon for {app_name}. Searching for a fallback system icon...")
+    system_icon = find_system_icon(app_name) or find_system_icon("utilities-terminal")
+    if system_icon:
+        shutil.copy(system_icon, icon_dest)
+        # print(f"Copied system icon to {icon_dest}")
+    else:
+        raise FileNotFoundError(f"❌ Error: No system icon found for {app_name}.")
+
+
+def fix_desktop_entry(app_name, app_dir, binary_path):
+    """Ensure the AppImage contains a valid .desktop file."""
+    desktop_file_path = app_dir / f"{app_name}.desktop"
+    if not desktop_file_path.exists():
+        # print(f"No .desktop file found for {app_name}. Generating a minimal one...")
+        desktop_content = f"""[Desktop Entry]
+Type=Application
+Name={app_name}
+Exec=/usr/bin/{binary_path.name}
+Terminal=true
+Categories=Utility;
+Icon={app_name}
+"""
+        with open(desktop_file_path, "w") as f:
+            f.write(desktop_content)
+
+    # -- Read the existing .desktop file before modifying it.
+
+    with open(desktop_file_path, "r") as f:
+        lines = f.readlines()
+
+    # -- Update Exec line if needed.
+
+    updated_lines = []
+    for line in lines:
+        if line.startswith("Exec=") and f"/usr/bin/{binary_path.name}" not in line:
+            updated_lines.append(f"Exec=/usr/bin/{binary_path.name}\n")
+        else:
+            updated_lines.append(line)
+
+    with open(desktop_file_path, "w") as f:
+        f.writelines(updated_lines)
+    # print(f"Fixed Exec path in {desktop_file_path}")
+
+
 def generate_apprun(app_dir, config):
     """Generate the AppRun script dynamically inside the AppImage."""
     apprun_path = app_dir / "AppRun"
 
     # -- Fetch settings from YAML. Exit if missing.
 
-    exec_path = get_apprunconf_value(config, "exec")
-    setpath = get_apprunconf_value(config, "setpath", "/usr/bin")
-    setlibpath = get_apprunconf_value(config, "setlibpath", "/usr/lib")
-
-    # -- Fetch additional environment variables (default to empty dict).
-
-    envvars = config.get("apprunconf", {}).get("envvars", {})
-
-    if not isinstance(envvars, dict):
-        print(f"⚠️ Warning: 'envvars' in YAML is not a dictionary. Ignoring...")
-        envvars = {}
+    exec_cmd = get_apprunconf_value(config, "exec", expected_type=str)
+    setpath = get_apprunconf_value(config, "setpath", default="/usr/bin", expected_type=str)
+    setlibpath = get_apprunconf_value(config, "setlibpath", default="/usr/lib", expected_type=str)
+    prebuild_commands = get_apprunconf_value(config, "prebuild_commands", default=[], expected_type=list)
+    envvars = get_apprunconf_value(config, "envvars", default={}, expected_type=dict)
 
     # -- Generate environment variable exports dynamically.
 
@@ -166,7 +227,7 @@ export GSETTINGS_SCHEMA_DIR="$APPDIR/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEM
 
 # -- Run the application.
 
-exec "$APPDIR{exec_path}" "$@"
+exec "$APPDIR{exec_cmd}" "$@"
 """
 
     with open(apprun_path, "w") as f:
@@ -174,101 +235,6 @@ exec "$APPDIR{exec_path}" "$@"
 
     apprun_path.chmod(0o755)
     # print(f"Generated AppRun at {apprun_path}")
-
-
-def setup_appimage_directories(app_name, binary_path):
-    """Ensure required directories exist for AppImage building."""
-    package_dir = app_base_dir / app_name
-    app_dir = package_dir / "AppDir"
-    bin_dir = app_dir / "usr/bin"
-
-    app_dir.mkdir(parents=True, exist_ok=True)
-    bin_dir.mkdir(parents=True, exist_ok=True)
-
-    extracted_binary_path = app_dir / binary_path.lstrip("/")
-    return extracted_binary_path, app_dir
-
-
-def fix_desktop_entry(app_name, app_dir, binary_path):
-    """Ensure the AppImage contains a valid .desktop file."""
-    desktop_file_path = app_dir / f"{app_name}.desktop"
-    if not desktop_file_path.exists():
-        # print(f"No .desktop file found for {app_name}. Generating a minimal one...")
-        desktop_content = f"""[Desktop Entry]
-Type=Application
-Name={app_name}
-Exec=/usr/bin/{binary_path.name}
-Terminal=true
-Categories=Utility;
-Icon={app_name}
-"""
-        with open(desktop_file_path, "w") as f:
-            f.write(desktop_content)
-
-    # -- Read existing .desktop file before modifying it.
-
-    with open(desktop_file_path, "r") as f:
-        lines = f.readlines()
-
-    # -- Update Exec line if needed.
-
-    updated_lines = []
-    for line in lines:
-        if line.startswith("Exec=") and f"/usr/bin/{binary_path.name}" not in line:
-            updated_lines.append(f"Exec=/usr/bin/{binary_path.name}\n")
-        else:
-            updated_lines.append(line)
-
-    with open(desktop_file_path, "w") as f:
-        f.writelines(updated_lines)
-    # print(f"Fixed Exec path in {desktop_file_path}")
-
-
-def copy_system_icon(app_name, app_dir, icon_path):
-    """Copy the system icon if none exists in the AppDir."""
-    icon_dest = app_dir / f"{app_name}.png"
-
-    if icon_path:
-        icon_path = Path(icon_path)
-        if icon_path.exists():
-            shutil.copy(icon_path, icon_dest)
-            print(f"Copied provided icon to {icon_dest}")
-            return
-
-    # print(f"No provided icon for {app_name}. Searching for a fallback system icon...")
-    system_icon = find_system_icon(app_name) or find_system_icon("utilities-terminal")
-    if system_icon:
-        shutil.copy(system_icon, icon_dest)
-        # print(f"Copied system icon to {icon_dest}")
-    else:
-        raise FileNotFoundError(f"❌ Error: No system icon found for {app_name}.")
-
-
-def build_appimage(app_name, app_dir, output_file, quiet=True):
-    """Run appimagetool to build the AppImage."""
-    if not quiet:
-        print(f"\n🛠  Building AppImage: {output_file} ...")
-
-    try:
-        with open(os.devnull, 'w') as devnull:
-            subprocess.run(
-                [str(appimagetool_path), str(app_dir), str(output_file)],
-                check=True,
-                stdout=None if not quiet else devnull,
-                stderr=None if not quiet else devnull
-            )
-
-        if not quiet:
-            print(f"✅ AppImage built successfully: {output_file}")
-
-        # -- Clean cache after successful build.
-
-        cleanup_cache(app_name)
-
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error: AppImage build failed! {e}")
-        cleanup_cache(app_name)
-        exit(1)
 
 
 def patch_binary_rpath(binary_path, config):
@@ -306,6 +272,33 @@ def patch_binary_rpath(binary_path, config):
         print(f"❌ Error: Failed to patch RPATH for {binary_path}: {e}")
 
 
+def package_appdir(app_name, app_dir, output_file, quiet=True):
+    """Run appimagetool to make an AppDir into an AppImage."""
+    if not quiet:
+        print(f"\n🛠  Building AppImage: {output_file} ...")
+
+    try:
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(
+                [str(appimagetool_path), str(app_dir), str(output_file)],
+                check=True,
+                stdout=None if not quiet else devnull,
+                stderr=None if not quiet else devnull
+            )
+
+        if not quiet:
+            print(f"✅ AppImage built successfully: {output_file}")
+
+        # -- Clean cache after successful build.
+
+        cleanup_cache(app_name)
+
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error: AppImage build failed! {e}")
+        cleanup_cache(app_name)
+        exit(1)
+
+
 def prepare_appimage(config, install_mode=False, quiet=True):
     """Prepare and build an AppImage with the version in the filename."""
     
@@ -335,16 +328,17 @@ def prepare_appimage(config, install_mode=False, quiet=True):
         env["APPDIR"] = str(app_dir)
 
         for cmd in prebuild_commands:
-            cmd_resolved = cmd.replace("$APPDIR", str(app_dir))
+            cmd_resolved = f'bash -c "{cmd.replace("$APPDIR", str(app_dir))}"'
             try:
-                subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir, stderr=subprocess.PIPE)
                 print(f"    🤖 Command executed: {cmd_resolved}")
             except subprocess.CalledProcessError as e:
-                print(f"❌ Error: Failed to execute prebuild command '{cmd_resolved}': {e}")
+                print(f"❌ Error: Failed to execute prebuild command '{cmd_resolved}'.\n")
+                print(f"📜 Output:\n{e.stderr.decode()}\n")
                 cleanup_cache(app_name)
                 return
 
-    ensure_appimagetool()
+    get_appimagetool()
 
     # -- Move binary to correct location BEFORE generating AppRun.
 
@@ -377,9 +371,9 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     patch_binary_rpath(str(new_binary_path), config)
 
-    # -- Build final AppImage.
+    # -- Build the final AppImage.
 
-    build_appimage(app_name, app_dir, output_file, quiet)
+    package_appdir(app_name, app_dir, output_file, quiet)
 
     if not quiet:
         print(f"📦 AppImage ready: {output_file}\n")
