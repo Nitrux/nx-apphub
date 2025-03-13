@@ -145,7 +145,7 @@ if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
 export PATH="$running_dir{setpath}:$running_dir/usr/sbin:$PATH"
 export XDG_DATA_DIRS="$running_dir/usr/share:$XDG_DATA_DIRS"
 export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
-export QT_PLUGIN_PATH="$running_dir{setlibpath}/qt5/plugins:$QT_PLUGIN_PATH"
+export QT_PLUGIN_PATH="$running_dir{setlibpath}/qt5/plugins:$running_dir{setlibpath}/qt6/plugins:$QT_PLUGIN_PATH"
 
 {env_exports}
 
@@ -281,9 +281,9 @@ def patch_binary_rpath(binary_path, config):
     # -- Patch the RPATH of the executable.
 
     try:
-        rpath_value = f"$ORIGIN/../../{setlibpath}:$ORIGIN/../../{setlibpath}/{multiarch_triplet}"
+        rpath_value = f"$ORIGIN/../..{setlibpath}:$ORIGIN/../..{setlibpath}/{multiarch_triplet}:$ORIGIN/../..{setlibpath}64:$ORIGIN/../..{setlibpath}/{multiarch_triplet}/qt5:$ORIGIN/../..{setlibpath}/{multiarch_triplet}/qt6"
         subprocess.run(
-            ["patchelf", "--set-rpath", rpath_value, binary_path],
+            ["patchelf", "--set-rpath", rpath_value, "--force-rpath", binary_path],
             check=True
         )
         print(f"✔️  Patched RPATH for: {binary_path}")
@@ -323,7 +323,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
             cmd_resolved = cmd.replace("$APPDIR", str(app_dir))
             try:
                 subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                print(f"\n    🤖 Command executed: {cmd_resolved}\n")
+                print(f"    🤖 Command executed: {cmd_resolved}")
             except subprocess.CalledProcessError as e:
                 print(f"❌ Error: Failed to execute prebuild command '{cmd_resolved}': {e}")
                 cleanup_cache(app_name)
