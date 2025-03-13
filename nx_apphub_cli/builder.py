@@ -159,6 +159,10 @@ def generate_apprun(app_dir, config):
         qt_env_init += 'if [ -z "${QT_PLUGIN_PATH+x}" ]; then export QT_PLUGIN_PATH=""; fi\n'
     if "QT_QML_IMPORT_PATH" in envvars:
         qt_env_init += 'if [ -z "${QT_QML_IMPORT_PATH+x}" ]; then export QT_QML_IMPORT_PATH=""; fi\n'
+    if "QML_IMPORT_PATH" in envvars:
+        qt_env_init += 'if [ -z "${QML_IMPORT_PATH+x}" ]; then export QML_IMPORT_PATH=""; fi\n'
+    if "QML2_IMPORT_PATH" in envvars:
+        qt_env_init += 'if [ -z "${QML2_IMPORT_PATH+x}" ]; then export QML2_IMPORT_PATH=""; fi\n'
 
     # -- Determine multiarch triplet dynamically.
 
@@ -272,7 +276,7 @@ def patch_binary_rpath(binary_path, config):
     # -- Patch the RPATH of the executable.
 
     try:
-        rpath_value = f"$ORIGIN/../..{setlibpath}:$ORIGIN/../..{setlibpath}/{multiarch_triplet}:$ORIGIN/../..{setlibpath}64:$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy"
+        rpath_value = f"$ORIGIN/../..{setlibpath}:$ORIGIN/../..{setlibpath}/{multiarch_triplet}:$ORIGIN/../..{setlibpath}64:$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy:$ORIGIN/../../../..{setlibpath}/{multiarch_triplet}/qt5/qml::$ORIGIN/../../../..{setlibpath}/{multiarch_triplet}/qt6/qml:$ORIGIN/../../../..{setlibpath}/{multiarch_triplet}/qt5/plugins::$ORIGIN/../../../..{setlibpath}/{multiarch_triplet}/qt6/plugins"
         subprocess.run(
             ["patchelf", "--set-rpath", rpath_value, "--force-rpath", binary_path],
             check=True
