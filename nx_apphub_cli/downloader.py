@@ -37,6 +37,7 @@ cache_dir = Path.home() / ".cache/nx-apphub-cli"
 # -- Mirors for supported distributions.
 
 debian_mirrors = [
+    "http://deb.debian.org/debian",
     "http://ftp.debian.org/debian",
     "http://ftp.uk.debian.org/debian",
     "http://ftp.us.debian.org/debian",
@@ -49,6 +50,7 @@ ubuntu_mirrors = [
 ]
 
 devuan_mirrors = [
+    "http://deb.devuan.org/devuan",
     "http://devuan.ipacct.com/devuan",
     "http://mirror.vpgrp.io/devuan",
     "http://mirrors.dotsrc.org/devuan",
