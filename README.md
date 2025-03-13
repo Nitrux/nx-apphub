@@ -12,18 +12,18 @@ NX AppHub CLI is a lightweight command-line tool for managing and building appli
 
 ### Requirements
 
+- Nitrux 3.8.1+
+- Python 3.10+
+
 NX AppHub CLI requires the following utilities to function properly:
 
-- Nitrux 3.8.1+
-- ar, tar, xz-utils, gzip, and zstd
-- Git
-- file
-- Appstream
-- FUSE 3
-- libfuse2
-- Python 3.10+
-- Patchelf
-- Any icon theme (Breeze, Adwaita, etc.)
+- binutils
+- zstd
+- git
+- appstream
+- fuse3
+- libfuse2t64
+- patchelf
 
 # Installation
 
