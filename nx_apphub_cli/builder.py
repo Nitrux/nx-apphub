@@ -146,7 +146,6 @@ def generate_apprun(app_dir, config):
     exec_cmd = get_apprunconf_value(config, "exec", expected_type=str)
     setpath = get_apprunconf_value(config, "setpath", default="/usr/bin", expected_type=str)
     setlibpath = get_apprunconf_value(config, "setlibpath", default="/usr/lib", expected_type=str)
-    prebuild_commands = get_apprunconf_value(config, "prebuild_commands", default=[], expected_type=list)
     envvars = get_apprunconf_value(config, "envvars", default={}, expected_type=dict)
 
     # -- Generate environment variable exports dynamically.
@@ -328,7 +327,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
         env["APPDIR"] = str(app_dir)
 
         for cmd in prebuild_commands:
-            cmd_resolved = f'bash -c "{cmd.replace("$APPDIR", str(app_dir))}"'
+            cmd_resolved = cmd.replace("$APPDIR", str(app_dir))
             try:
                 subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir, stderr=subprocess.PIPE)
                 print(f"    🤖 Command executed: {cmd_resolved}")

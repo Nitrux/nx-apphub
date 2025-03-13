@@ -80,7 +80,6 @@ def validate_yaml_config(config):
             "setpath": str,
             "setlibpath": str,
             "envvars": dict,
-            "prebuild_commands": list
         }
     }
 
