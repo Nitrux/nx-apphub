@@ -130,7 +130,8 @@ def install(app_names):
         built_appbox = install_dir / f"{app_name}-{app_version}-{system_arch}.AppBox"
         if not built_appbox.exists():
             print(f"❌ Error: Failed to find the built {built_appbox} file. Skipping installation.")
-            continue
+            cleanup_cache(app_name)
+            return
 
         print(f"\n✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
 
