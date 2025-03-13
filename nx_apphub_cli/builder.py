@@ -152,6 +152,14 @@ def generate_apprun(app_dir, config):
 
     env_exports = "\n".join([f'export {key}="{value}"' for key, value in envvars.items()])
 
+    # -- Conditionally add initialization for Qt environment variables **only if they exist in envvars**
+
+    qt_env_init = ""
+    if "QT_PLUGIN_PATH" in envvars:
+        qt_env_init += 'if [ -z "${QT_PLUGIN_PATH+x}" ]; then export QT_PLUGIN_PATH=""; fi\n'
+    if "QT_QML_IMPORT_PATH" in envvars:
+        qt_env_init += 'if [ -z "${QT_QML_IMPORT_PATH+x}" ]; then export QT_QML_IMPORT_PATH=""; fi\n'
+
     # -- Determine multiarch triplet dynamically.
 
     arch_map = {
@@ -215,6 +223,11 @@ if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin:$PATH"
 export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy:$LD_LIBRARY_PATH"
 export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
+
+
+# -- Initialize Qt environment variables if required.
+
+{qt_env_init}
 
 
 # -- Additional environment variables from YAML.
