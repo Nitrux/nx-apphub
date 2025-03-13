@@ -149,7 +149,6 @@ if [ -z "${{PATH+x}}" ]; then export PATH=""; fi
 if [ -z "${{LD_LIBRARY_PATH+x}}" ]; then export LD_LIBRARY_PATH=""; fi
 if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 if [ -z "${{GSETTINGS_SCHEMA_DIR+x}}" ]; then export GSETTINGS_SCHEMA_DIR=""; fi
-if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
 
 
 # -- Set environment variables for proper execution inside the AppImage.
@@ -158,7 +157,6 @@ export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin:$PATH"
 export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy:$LD_LIBRARY_PATH"
 export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
 export GSETTINGS_SCHEMA_DIR="$APPDIR/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
-export QT_PLUGIN_PATH="$APPDIR{setlibpath}/{multiarch_triplet}/qt5/plugins:$APPDIR{setlibpath}/{multiarch_triplet}/qt6/plugins:$QT_PLUGIN_PATH"
 
 
 # -- Additional environment variables from YAML.
