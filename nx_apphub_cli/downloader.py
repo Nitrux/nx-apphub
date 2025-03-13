@@ -27,6 +27,7 @@ import re
 import requests
 import sys
 from pathlib import Path
+from nx_apphub_cli.utils import cleanup_cache
 
 
 # -- Base cache directory for downloads.
@@ -64,8 +65,23 @@ nitrux_mirrors = [
     "https://packagecloud.io/nitrux/mauikit/debian",
 ]
 
+debian_snapshots = [
+    "https://snapshot.debian.org/archive/debian/20250101T083404Z"
+]
+
+
 def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
+
+    # -- Packages to exclude from downloading.
+
+    excluded_packages = {"libc6", "libglib2.0-0t64", "libglib2.0-0"}
+
+    # -- Skip downloading if the package is in the exclusion list.
+
+    if pkg_name in excluded_packages:
+        print(f"⚠️ Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppImage.")
+        return None
     
     package_dir = cache_dir / package_name
     deb_dir = package_dir / "debs"
@@ -80,12 +96,15 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         release = repo['release']
         arch = repo['arch']
 
-        if distro not in ["debian", "ubuntu", "devuan", "kde-neon", "nitrux"]:
+        if distro not in ["debian", "ubuntu", "devuan", "kde-neon", "nitrux", "debian-snapshots"]:
             if not quiet:
-                print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu, Devuan, KDE Neon, Nitrux.")
+                print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu, Devuan, KDE Neon.")
             continue
 
         # -- Select the correct mirror list.
+
+        # -- NOTE: The options "nitrux" and "debian-snapshots" are purposefully undocumented because I'm only adding them to test
+        # -- building the MauiKit AppImages using the packages in our repositories and the packages used to compile them, which is the whole reason I made this, lol.
 
         if distro == "debian":
             mirror_list = debian_mirrors
@@ -97,6 +116,8 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
             mirror_list = kde_neon_mirrors
         elif distro == "nitrux":
             mirror_list = nitrux_mirrors
+        elif distro == "debian-snapshots":
+            mirror_list = debian_snapshots
         else:
             continue
 
@@ -111,6 +132,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
                 return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
 
     print(f"❌ Error: Failed to find package '{pkg_name}' in any repository.\n")
+    cleanup_cache(package_name)
     sys.exit(1)
 
 
