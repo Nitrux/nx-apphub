@@ -58,6 +58,9 @@ kde_neon_mirrors = [
     "https://archive.neon.kde.org/user",
 ]
 
+nitrux_mirrors = [
+    "https://packagecloud.io/nitrux/mauikit/debian",
+]
 
 def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
@@ -75,9 +78,9 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         release = repo['release']
         arch = repo['arch']
 
-        if distro not in ["debian", "ubuntu", "devuan", "kde-neon"]:
+        if distro not in ["debian", "ubuntu", "devuan", "kde-neon", "nitrux"]:
             if not quiet:
-                print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu, Devuan, KDE Neon.")
+                print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu, Devuan, KDE Neon, Nitrux.")
             continue
 
         # -- Select the correct mirror list.
@@ -90,6 +93,8 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
             mirror_list = devuan_mirrors
         elif distro == "kde-neon":
             mirror_list = kde_neon_mirrors
+        elif distro == "nitrux":
+            mirror_list = nitrux_mirrors
         else:
             continue
 
