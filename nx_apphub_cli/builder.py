@@ -322,8 +322,8 @@ def prepare_appimage(config, install_mode=False, quiet=True):
         for cmd in prebuild_commands:
             cmd_resolved = cmd.replace("$APPDIR", str(app_dir))
             try:
-                subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir)
-                print(f"\n    🤖 Command: {cmd_resolved}\n")
+                subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"\n    🤖 Command executed: {cmd_resolved}\n")
             except subprocess.CalledProcessError as e:
                 print(f"❌ Error: Failed to execute prebuild command '{cmd_resolved}': {e}")
                 cleanup_cache(app_name)
