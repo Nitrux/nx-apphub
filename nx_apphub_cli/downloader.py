@@ -48,6 +48,16 @@ ubuntu_mirrors = [
     "http://security.ubuntu.com/ubuntu",
 ]
 
+devuan_mirrors = [
+    "http://devuan.ipacct.com/devuan",
+    "http://mirror.vpgrp.io/devuan",
+    "http://mirrors.dotsrc.org/devuan",
+]
+
+kde_neon_mirrors = [
+    "https://archive.neon.kde.org/user",
+]
+
 
 def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
@@ -65,12 +75,23 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         release = repo['release']
         arch = repo['arch']
 
-        if distro not in ["debian", "ubuntu"]:
+        if distro not in ["debian", "ubuntu", "devuan", "kde-neon"]:
             if not quiet:
-                print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu.")
+                print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu, Devuan, KDE Neon.")
             continue
 
-        mirror_list = debian_mirrors if distro == "debian" else ubuntu_mirrors
+        # -- Select the correct mirror list.
+
+        if distro == "debian":
+            mirror_list = debian_mirrors
+        elif distro == "ubuntu":
+            mirror_list = ubuntu_mirrors
+        elif distro == "devuan":
+            mirror_list = devuan_mirrors
+        elif distro == "kde-neon":
+            mirror_list = kde_neon_mirrors
+        else:
+            continue
 
         for mirror in mirror_list:
             pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name)
