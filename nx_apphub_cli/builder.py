@@ -252,6 +252,7 @@ def build_appimage(app_name, app_dir, output_file, quiet=True):
 
     except subprocess.CalledProcessError as e:
         print(f"❌ Error: AppImage build failed! {e}")
+        cleanup_cache(app_name)
         exit(1)
 
 
@@ -287,7 +288,7 @@ def patch_binary_rpath(binary_path, config):
         )
         print(f"✔️  Patched RPATH for: {binary_path}")
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error patching RPATH for {binary_path}: {e}")
+        print(f"❌ Error: Failed to patch RPATH for {binary_path}: {e}")
 
 
 def prepare_appimage(config, install_mode=False, quiet=True):
@@ -301,11 +302,32 @@ def prepare_appimage(config, install_mode=False, quiet=True):
         print(f"❌ Error: No binary path specified for {app_name}. Aborting.")
         return
 
+
+    # -- Ensure AppDir is properly set up before running any commands.
+
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
     if not extracted_binary_path.exists():
         print(f"❌ Error: Binary {extracted_binary_path} not found! AppImage might fail.")
         return
+
+    # -- Run prebuild commands inside the AppDir.
+
+    prebuild_commands = config.get("apprunconf", {}).get("prebuild_commands", [])
+    if prebuild_commands:
+        print(f"🔧 Running prebuild commands for {app_name} inside {app_dir}...")
+        env = os.environ.copy()
+        env["APPDIR"] = str(app_dir)
+
+        for cmd in prebuild_commands:
+            cmd_resolved = cmd.replace("$APPDIR", str(app_dir))
+            try:
+                subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir)
+                print(f"\n    🤖 Command: {cmd_resolved}\n")
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Error: Failed to execute prebuild command '{cmd_resolved}': {e}")
+                cleanup_cache(app_name)
+                return
 
     ensure_appimagetool()
 
