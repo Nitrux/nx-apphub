@@ -92,6 +92,17 @@ def generate_apprun(app_dir, config):
 
     env_exports = "\n".join([f'export {key}="{value}"' for key, value in envvars.items()])
 
+    # -- Determine multiarch triplet dynamically.
+
+    arch_map = {
+        "x86_64": "x86_64-linux-gnu",
+        "aarch64": "aarch64-linux-gnu",
+        "arm64": "aarch64-linux-gnu",
+    }
+
+    arch = get_architecture()
+    multiarch_triplet = arch_map.get(arch)
+
     # -- Construct the script.
 
     current_year = datetime.now().year
@@ -128,13 +139,14 @@ set -eu
 
 # -- Get the running directory of the AppImage.
 
-realpath=$(readlink -f "$0")
-running_dir=$(dirname "$realpath")
+REALPATH=$(readlink -f "$0")
+APPDIR=$(dirname "$REALPATH")
 
 
 # -- Ensure environment variables are always set to avoid unbound variable errors.
 
 if [ -z "${{PATH+x}}" ]; then export PATH=""; fi
+if [ -z "${{LD_LIBRARY_PATH+x}}" ]; then export LD_LIBRARY_PATH=""; fi
 if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 if [ -z "${{GSETTINGS_SCHEMA_DIR+x}}" ]; then export GSETTINGS_SCHEMA_DIR=""; fi
 if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
@@ -142,16 +154,21 @@ if [ -z "${{QT_PLUGIN_PATH+x}}" ]; then export QT_PLUGIN_PATH=""; fi
 
 # -- Set environment variables for proper execution inside the AppImage.
 
-export PATH="$running_dir{setpath}:$running_dir/usr/sbin:$PATH"
-export XDG_DATA_DIRS="$running_dir/usr/share:$XDG_DATA_DIRS"
-export GSETTINGS_SCHEMA_DIR="$running_dir/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
-export QT_PLUGIN_PATH="$running_dir{setlibpath}/qt5/plugins:$running_dir{setlibpath}/qt6/plugins:$QT_PLUGIN_PATH"
+export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin:$PATH"
+export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy:$LD_LIBRARY_PATH"
+export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
+export GSETTINGS_SCHEMA_DIR="$APPDIR/usr/share/glib-2.0/schemas:$GSETTINGS_SCHEMA_DIR"
+export QT_PLUGIN_PATH="$APPDIR{setlibpath}/{multiarch_triplet}/qt5/plugins:$APPDIR{setlibpath}/{multiarch_triplet}/qt6/plugins:$QT_PLUGIN_PATH"
+
+
+# -- Additional environment variables from YAML.
 
 {env_exports}
 
+
 # -- Run the application.
 
-exec "$running_dir{exec_path}" "$@"
+exec "$APPDIR{exec_path}" "$@"
 """
 
     with open(apprun_path, "w") as f:
@@ -281,7 +298,7 @@ def patch_binary_rpath(binary_path, config):
     # -- Patch the RPATH of the executable.
 
     try:
-        rpath_value = f"$ORIGIN/../..{setlibpath}:$ORIGIN/../..{setlibpath}/{multiarch_triplet}:$ORIGIN/../..{setlibpath}64:$ORIGIN/../..{setlibpath}/{multiarch_triplet}/qt5:$ORIGIN/../..{setlibpath}/{multiarch_triplet}/qt6"
+        rpath_value = f"$ORIGIN/../..{setlibpath}:$ORIGIN/../..{setlibpath}/{multiarch_triplet}:$ORIGIN/../..{setlibpath}64:$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy"
         subprocess.run(
             ["patchelf", "--set-rpath", rpath_value, "--force-rpath", binary_path],
             check=True
