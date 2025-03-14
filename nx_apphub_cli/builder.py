@@ -230,8 +230,8 @@ if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 
 # -- Set environment variables for proper execution inside the AppImage.
 
-export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin:$PATH"
-export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy:$LD_LIBRARY_PATH"
+export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin"
+export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy"
 export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
 
 
