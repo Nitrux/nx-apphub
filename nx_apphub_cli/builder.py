@@ -165,6 +165,8 @@ def generate_apprun(app_dir, config):
         qt_env_init += 'if [ -z "${QML2_IMPORT_PATH+x}" ]; then export QML2_IMPORT_PATH=""; fi\n'
     if "QTWEBENGINEPROCESS_PATH" in envvars:
             qt_env_init += 'if [ -z "${QTWEBENGINEPROCESS_PATH+x}" ]; then export QTWEBENGINEPROCESS_PATH=""; fi\n'
+    if "QTWEBENGINE_RESOURCES_PATH" in envvars:
+            qt_env_init += 'if [ -z "${QTWEBENGINE_RESOURCES_PATH+x}" ]; then export QTWEBENGINE_RESOURCES_PATH=""; fi\n'
 
     # -- Determine multiarch triplet dynamically.
 
