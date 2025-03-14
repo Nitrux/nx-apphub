@@ -81,7 +81,10 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         "libglib2.0-0t64", 
         "libglib2.0-0", 
         "libgcc-s1", 
-        "libstdc++6"
+        "libstdc++6",
+        "libglx0",
+        "libegl1",
+        "libgl1"
     }
 
     # -- Skip downloading if the package is in the exclusion list.
