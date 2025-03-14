@@ -63,10 +63,11 @@ kde_neon_mirrors = [
 
 nitrux_mirrors = [
     "https://packagecloud.io/nitrux/mauikit/debian",
+    "https://packagecloud.io/nitrux/depot/debian",
 ]
 
 debian_snapshots = [
-    "https://snapshot.debian.org/archive/debian/20250101T083404Z"
+    "https://snapshot.debian.org/archive/debian/20250101T083404Z",
 ]
 
 
