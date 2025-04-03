@@ -306,20 +306,23 @@ def patch_binary_rpath(binary_path, config):
     # -- Patch the RPATH of the executable.
 
     try:
-        rpath_value = f"""\
-        $ORIGIN/../..{setlibpath}:
-        $ORIGIN/../..{setlibpath}/{multiarch_triplet}:
-        $ORIGIN/../..{setlibpath}64:
-        $ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy:
-        $ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/qml:
-        $ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt6/qml:
-        $ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/plugins:
-        $ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt6/plugins:
-        $ORIGIN/../../..{setlibpath}/qt5/libexec:
-        $ORIGIN/../../..{setlibpath}/qt5/bin:
-        $ORIGIN/../../..{setlibpath}/qt6/libexec:
-        $ORIGIN/../../..{setlibpath}/qt6/bin
-        """
+        rpath_parts = [
+            f"$ORIGIN/../..{setlibpath}",
+            f"$ORIGIN/../..{setlibpath}/{multiarch_triplet}",
+            f"$ORIGIN/../..{setlibpath}64",
+            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy",
+            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/qml",
+            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt6/qml",
+            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/plugins",
+            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt6/plugins",
+            f"$ORIGIN/../../..{setlibpath}/qt5/libexec",
+            f"$ORIGIN/../../..{setlibpath}/qt5/bin",
+            f"$ORIGIN/../../..{setlibpath}/qt6/libexec",
+            f"$ORIGIN/../../..{setlibpath}/qt6/bin",
+        ]
+
+        rpath_value = ":".join(rpath_parts)
+
         subprocess.run(
             ["patchelf", "--set-rpath", rpath_value, "--force-rpath", binary_path],
             check=True
