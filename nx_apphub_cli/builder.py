@@ -56,14 +56,14 @@ def setup_appimage_directories(app_name, binary_path):
 
 icon_themes = ["breeze-dark", "breeze", "Adwaita", "Luv", "hicolor"]
 
-def find_system_icon(icon_name, preferred_theme=None):
+def find_system_icon(icon_name, app_dir, preferred_theme=None):
     """Search for the system icon in the specified or standard themes, preferring exact matches."""
     search_themes = [preferred_theme] + icon_themes if preferred_theme else icon_themes
     icon_exts = [".png", ".svg", ".xpm"]
 
     for ext in icon_exts:
         for theme in search_themes:
-            theme_path = Path(f"/usr/share/icons/{theme}")
+            theme_path = app_dir / f"usr/share/icons/{theme}"
             if theme_path.exists():
                 exact_match = theme_path / f"{icon_name}{ext}"
                 if exact_match.exists():
@@ -71,7 +71,7 @@ def find_system_icon(icon_name, preferred_theme=None):
                 for icon_file in theme_path.rglob(f"{icon_name}{ext}"):
                     return icon_file
 
-    pixmaps_path = Path("/usr/share/pixmaps")
+    pixmaps_path = app_dir / "usr/share/pixmaps"
     for ext in icon_exts:
         exact_match = pixmaps_path / f"{icon_name}{ext}"
         if exact_match.exists():
@@ -92,33 +92,45 @@ def get_icon_name_from_desktop(app_dir):
 
 
 def copy_system_icon(app_name, app_dir, icon_path):
-    """Copy the system icon if none exists in the AppDir."""
-    icon_dest = app_dir / f"{app_name}.png"
+    """Copy the icon referenced in the .desktop file to the root of AppDir with the correct name and extension."""
+
+    # -- Try to extract icon name from .desktop file.
+
+    icon_name = get_icon_name_from_desktop(app_dir) or app_name
 
     if icon_path:
         icon_path = Path(icon_path)
         if icon_path.exists():
+            icon_dest = app_dir / f"{icon_name}{icon_path.suffix}"
             shutil.copy(icon_path, icon_dest)
-            print(f"Copied provided icon to {icon_dest}")
+            print(f"✔️ Using provided icon: {icon_dest.name}")
             return
 
-    # -- Try to get a more accurate icon name from .desktop file.
+    system_icon = (
+        find_system_icon(icon_name, app_dir)
+        or find_system_icon("utilities-terminal", Path("/"))
+    )
 
-    icon_name = get_icon_name_from_desktop(app_dir) or app_name
-
-    system_icon = find_system_icon(icon_name) or find_system_icon("utilities-terminal")
     if system_icon:
+        icon_dest = app_dir / f"{icon_name}{system_icon.suffix}"
         shutil.copy(system_icon, icon_dest)
+        print(f"✔️ Using icon from AppDir: {icon_dest.name}")
     else:
-        raise FileNotFoundError(f"❌ Error: No system icon found for {icon_name}.")
+        raise FileNotFoundError(f"❌ Error: No system icon found for '{icon_name}'.")
 
 
 def fix_desktop_entry(app_name, app_dir, binary_path):
     """Ensure the AppImage contains a valid .desktop file."""
-    existing_desktops = list(app_dir.glob("*.desktop"))
+    existing_desktops = list(app_dir.rglob("*.desktop"))
 
     if existing_desktops:
         desktop_file_path = existing_desktops[0]
+
+        if desktop_file_path.parent != app_dir:
+            target_path = app_dir / desktop_file_path.name
+            shutil.copy(desktop_file_path, target_path)
+            desktop_file_path = target_path
+
     else:
         desktop_file_path = app_dir / f"{app_name}.desktop"
         desktop_content = f"""[Desktop Entry]
