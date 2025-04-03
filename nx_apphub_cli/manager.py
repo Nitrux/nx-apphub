@@ -30,6 +30,10 @@ import tarfile
 import platform
 from datetime import datetime
 from pathlib import Path
+from shutil import get_terminal_size
+
+from tqdm import tqdm
+
 from .downloader import get_latest_deb
 from .extractor import extract_deb
 from .builder import prepare_appimage
@@ -55,7 +59,7 @@ for directory in [repo_base_dir, repo_dir, backup_dir, install_dir]:
 
 def install(app_names):
     """Fetch YAML metadata, build AppImage, and store metadata for multiple applications."""
-    
+
     if not isinstance(app_names, list):
         app_names = [app_names]
 
@@ -115,10 +119,25 @@ def install(app_names):
 
         # -- Process dependencies.
 
-        print("📥 Downloading dependencies...")
-        for dep in config["buildinfo"].get("deps", []):
-            deb_path = get_latest_deb(dep, distrorepo, app_name)
-            extract_deb(deb_path, app_name)
+        dependencies = config["buildinfo"].get("deps", [])
+
+        if dependencies:
+            print(f"📥 Downloading {len(dependencies)} dependencies:")
+
+            terminal_width = get_terminal_size((80, 20)).columns
+
+            for dep in tqdm(
+                dependencies,
+                desc="   ⏬ Fetching PKGs",
+                unit="pkg",
+                ncols=terminal_width,
+                dynamic_ncols=False,
+                bar_format="{l_bar}{bar}| {remaining:>8} • {rate_fmt:<14}"
+            ):
+                deb_path = get_latest_deb(dep, distrorepo, app_name)
+                extract_deb(deb_path, app_name)
+        else:
+            print("📦 No dependencies listed.")
 
         # -- Build AppImage.
 

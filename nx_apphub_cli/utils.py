@@ -23,10 +23,11 @@
 #############################################################################################################################################################################
 
 import os
-import shutil
-import requests
 import platform
+import shutil
 from pathlib import Path
+
+import requests
 
 
 # -- Define base directories.

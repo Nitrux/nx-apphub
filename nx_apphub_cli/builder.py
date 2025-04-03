@@ -22,15 +22,17 @@
 #    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
 #############################################################################################################################################################################
 
-import subprocess
 import os
-from pathlib import Path
-import shutil
 import platform
-import requests
-from nx_apphub_cli.utils import get_appimagetool, cleanup_cache, get_architecture
-from nx_apphub_cli.config import get_apprunconf_value
+import shutil
+import subprocess
 from datetime import datetime
+from pathlib import Path
+
+import requests
+
+from nx_apphub_cli.config import get_apprunconf_value
+from nx_apphub_cli.utils import cleanup_cache, get_appimagetool, get_architecture
 
 
 # -- Base working directory for all packages.
@@ -38,6 +40,7 @@ from datetime import datetime
 app_base_dir = Path.home() / ".cache/nx-apphub-cli"
 local_bin = Path.home() / ".local/bin"
 appimagetool_path = local_bin / "appimagetool"
+
 
 def setup_appimage_directories(app_name, binary_path):
     """Ensure required directories exist for AppImage building."""
@@ -55,6 +58,7 @@ def setup_appimage_directories(app_name, binary_path):
 # -- Get an icon from the default icon themes. Search in /usr/share/icons and use /usr/share/pixmaps as a fallback.
 
 icon_themes = ["breeze-dark", "breeze", "Adwaita", "Luv", "hicolor"]
+
 
 def find_system_icon(icon_name, app_dir, preferred_theme=None):
     """Search for the system icon in the specified or standard themes, preferring exact matches."""
@@ -81,6 +85,7 @@ def find_system_icon(icon_name, app_dir, preferred_theme=None):
 
     return None
 
+
 def get_icon_name_from_desktop(app_dir):
     """Attempt to extract icon name from a .desktop file."""
     for file in app_dir.glob("*.desktop"):
@@ -91,7 +96,7 @@ def get_icon_name_from_desktop(app_dir):
     return None
 
 
-def copy_system_icon(app_name, app_dir, icon_path):
+def copy_system_icon(app_name, app_dir, icon_path, quiet=True):
     """Copy the icon referenced in the .desktop file to the root of AppDir with the correct name and extension."""
 
     # -- Try to extract icon name from .desktop file.
@@ -103,7 +108,8 @@ def copy_system_icon(app_name, app_dir, icon_path):
         if icon_path.exists():
             icon_dest = app_dir / f"{icon_name}{icon_path.suffix}"
             shutil.copy(icon_path, icon_dest)
-            print(f"✔️ Using provided icon: {icon_dest.name}")
+            if not quiet:
+                print(f"✔️ Using provided icon: {icon_dest.name}")
             return
 
     system_icon = (
@@ -114,24 +120,67 @@ def copy_system_icon(app_name, app_dir, icon_path):
     if system_icon:
         icon_dest = app_dir / f"{icon_name}{system_icon.suffix}"
         shutil.copy(system_icon, icon_dest)
-        print(f"✔️ Using icon from AppDir: {icon_dest.name}")
+        if not quiet:
+            print(f"✔️ Using icon from AppDir: {icon_dest.name}")
     else:
         raise FileNotFoundError(f"❌ Error: No system icon found for '{icon_name}'.")
 
 
 def fix_desktop_entry(app_name, app_dir, binary_path):
     """Ensure the AppImage contains a valid .desktop file."""
-    existing_desktops = list(app_dir.rglob("*.desktop"))
 
-    if existing_desktops:
-        desktop_file_path = existing_desktops[0]
+    desktop_dir = app_dir / "usr/share/applications"
+    existing_desktops = list(desktop_dir.glob("*.desktop")) if desktop_dir.exists() else []
 
-        if desktop_file_path.parent != app_dir:
-            target_path = app_dir / desktop_file_path.name
+    def is_valid_desktop(path):
+        try:
+            with path.open() as f:
+                lines = f.readlines()
+                has_name = any(line.strip().startswith("Name=") for line in lines)
+                has_exec = any(line.strip().startswith("Exec=") for line in lines)
+                return has_name and has_exec
+        except Exception:
+            return False
+
+    desktop_file_path = None
+
+    # -- Prefer exact match.
+    exact_match = desktop_dir / f"{app_name}.desktop"
+    if exact_match.exists() and is_valid_desktop(exact_match):
+        desktop_file_path = exact_match
+    else:
+
+        # -- Look for partial matches with app_name in the filename.
+
+        for file in existing_desktops:
+            if app_name in file.name and is_valid_desktop(file):
+                desktop_file_path = file
+                break
+
+        # -- Otherwise, fallback to first valid .desktop file.
+
+        if not desktop_file_path:
+            for file in existing_desktops:
+                if is_valid_desktop(file):
+                    desktop_file_path = file
+                    break
+
+    if desktop_file_path:
+
+        # -- Copy to top-level AppDir/ if needed.
+
+        target_path = app_dir / desktop_file_path.name
+        if desktop_file_path != target_path:
             shutil.copy(desktop_file_path, target_path)
             desktop_file_path = target_path
+            desktop_file_path = target_path
+
+        desktop_file_path = target_path
 
     else:
+
+        # -- Generate a minimal .desktop file.
+
         desktop_file_path = app_dir / f"{app_name}.desktop"
         desktop_content = f"""[Desktop Entry]
 Type=Application
@@ -144,12 +193,10 @@ Icon={app_name}
         with open(desktop_file_path, "w") as f:
             f.write(desktop_content)
 
-    # -- Read the existing .desktop file before modifying it.
+    # -- Patch Exec line if necessary.
 
     with open(desktop_file_path, "r") as f:
         lines = f.readlines()
-
-    # -- Update Exec line if needed.
 
     updated_lines = []
     for line in lines:

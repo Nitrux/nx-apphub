@@ -22,13 +22,14 @@
 #    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
 #############################################################################################################################################################################
 
-import sys
 import argparse
+import sys
+
+from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
 from nx_apphub_cli.config import load_yaml_config, validate_yaml_config
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
-from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
-from nx_apphub_cli.manager import install, remove, update, downgrade, search, show
+from nx_apphub_cli.manager import install, remove, search, show, update, downgrade
 
 
 def main():

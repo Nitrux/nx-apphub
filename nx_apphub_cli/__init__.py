@@ -22,13 +22,14 @@
 #    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
 #############################################################################################################################################################################
 
+from .builder import prepare_appimage, setup_appimage_directories
 from .cli import main
 from .config import load_yaml_config
 from .downloader import get_latest_deb
 from .extractor import extract_deb
-from .builder import prepare_appimage, setup_appimage_directories
-from .utils import ensure_executable, cleanup_cache
 from .manager import install, remove, update, downgrade, search
+from .utils import ensure_executable, cleanup_cache
+
 
 __all__ = [
     "main",

@@ -24,9 +24,11 @@
 
 import gzip
 import re
-import requests
 import sys
 from pathlib import Path
+
+import requests
+
 from nx_apphub_cli.utils import cleanup_cache
 
 
