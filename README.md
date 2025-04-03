@@ -8,7 +8,7 @@
 
 NX AppHub CLI is a lightweight command-line tool for managing and building applications in Nitrux as AppImages.
 
-> _⚠️ Important: NX AppHub CLI primarily targets Nitrux OS, and using this utility in other distributions may or may not work. To request formal support for other distributions, open a PR regarding this use case; otherwise, only opening an issue will be closed._
+> _⚠️ Important: NX AppHub CLI primarily targets Nitrux OS, and using this utility in other distributions may or may not work. To request formal support for other distributions, open a PR regarding this use case._
 
 ### Requirements
 
