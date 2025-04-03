@@ -430,7 +430,7 @@ def downgrade(app_names):
 
 def show():
     """Show installed AppBoxes."""
-    print("\n[ 📦 Installed Applications ]\n")
+    print("\n[ 📦 Installed AppBoxes ]\n")
 
     installed_apps = sorted(install_dir.glob(f"*-{system_arch}.AppBox"))
 
