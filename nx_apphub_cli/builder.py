@@ -209,13 +209,15 @@ def generate_apprun(app_dir, config):
     # -- Construct the script.
 
     current_year = datetime.now().year
+    copyright_str = f"#   Copyright <{current_year}> <Nitrux Latinoamericana S.C. <hello@nxos.org>>"
+    copyright_line = copyright_str.ljust(172) + "#"
 
     apprun_script = f"""#!/usr/bin/env bash
 
 #############################################################################################################################################################################
 #   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
 #                                                                                                                                                                           #
-#   Copyright <{current_year}> <Nitrux Latinoamericana S.C. <hello@nxos.org>>                                                                                               #
+{copyright_line}
 #                                                                                                                                                                           #
 #   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
 #                                                                                                                                                                           #
