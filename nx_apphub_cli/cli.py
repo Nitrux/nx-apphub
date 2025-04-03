@@ -32,9 +32,16 @@ from nx_apphub_cli.manager import install, remove, update, downgrade, search
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NX AppHub CLI - Application Manager and AppImage Builder")
+    parser = argparse.ArgumentParser(
+        prog="nx-apphub-cli",
+        description="NX AppHub CLI — Install, update, remove, and build AppImages"
+    )
     
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers = parser.add_subparsers(
+        dest="command",
+        title="Commands",
+        metavar=""
+    )
 
     # -- Management commands.
 
