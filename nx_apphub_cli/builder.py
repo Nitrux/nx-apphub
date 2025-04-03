@@ -165,7 +165,7 @@ def generate_apprun(app_dir, config):
 
     env_exports = "\n".join([f'export {key}="{value}"' for key, value in envvars.items()])
 
-    # -- Conditionally add initialization for Qt environment variables **only if they exist in envvars**
+    # -- Conditionally add initialization for Qt environment variables **only if they exist in envvars**.
 
     qt_env_init = ""
     if "QT_PLUGIN_PATH" in envvars:
@@ -203,7 +203,7 @@ def generate_apprun(app_dir, config):
 #############################################################################################################################################################################
 #   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
 #                                                                                                                                                                           #
-#   Copyright <{current_year}> <Nitrux Latinoamericana <hello@nxos.org>>                                                                                                              #
+#   Copyright <{current_year}> <Nitrux Latinoamericana S.C. <hello@nxos.org>>                                                                                               #
 #                                                                                                                                                                           #
 #   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
 #                                                                                                                                                                           #
@@ -267,7 +267,6 @@ exec "$APPDIR{exec_cmd}" "$@"
         f.write(apprun_script)
 
     apprun_path.chmod(0o755)
-    # print(f"Generated AppRun at {apprun_path}")
 
 
 def patch_binary_rpath(binary_path, config):
