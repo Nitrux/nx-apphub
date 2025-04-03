@@ -28,7 +28,7 @@ from nx_apphub_cli.config import load_yaml_config, validate_yaml_config
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
-from nx_apphub_cli.manager import install, remove, update, downgrade, search
+from nx_apphub_cli.manager import install, remove, update, downgrade, search, show
 
 
 def main():
@@ -60,6 +60,8 @@ def main():
     subparser_search = subparsers.add_parser("search", help="Search for specific applications")
     subparser_search.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to search for")
 
+    subparser_show = subparsers.add_parser("show", help="Show installed applications")
+
     # -- Building command (requires YAML file).
 
     subparser_build = subparsers.add_parser("build", help="Build an AppImage from a YAML file")
@@ -81,6 +83,8 @@ def main():
         downgrade(args.app_names)
     elif args.command == "search":
         search(args.app_names)
+    elif args.command == "show":
+        show()
     elif args.command == "build":
         print(f"\n[ 🛠 Building local AppImage... ]\n")
 

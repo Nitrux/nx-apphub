@@ -428,6 +428,22 @@ def downgrade(app_names):
     print("\n🎉 All requested applications have been processed!\n")
 
 
+def show():
+    """Show installed AppBoxes."""
+    print("\n[ 📦 Installed Applications ]\n")
+
+    installed_apps = sorted(install_dir.glob(f"*-{system_arch}.AppBox"))
+
+    if not installed_apps:
+        print("❌ No applications installed.")
+        return
+
+    for app in installed_apps:
+        print(f"✅ {app.name}")
+
+    print(f"\n📁 Total: {len(installed_apps)} installed in {install_dir}\n")
+
+
 # -- Export functions.
 
-__all__ = ["install", "remove", "update", "downgrade", "search"]
+__all__ = ["install", "remove", "update", "downgrade", "search", "show"]
