@@ -81,6 +81,15 @@ def find_system_icon(icon_name, preferred_theme=None):
 
     return None
 
+def get_icon_name_from_desktop(app_dir):
+    """Attempt to extract icon name from a .desktop file."""
+    for file in app_dir.glob("*.desktop"):
+        with file.open() as f:
+            for line in f:
+                if line.startswith("Icon="):
+                    return line.strip().split("=", 1)[1]
+    return None
+
 
 def copy_system_icon(app_name, app_dir, icon_path):
     """Copy the system icon if none exists in the AppDir."""
@@ -93,20 +102,25 @@ def copy_system_icon(app_name, app_dir, icon_path):
             print(f"Copied provided icon to {icon_dest}")
             return
 
-    # print(f"No provided icon for {app_name}. Searching for a fallback system icon...")
-    system_icon = find_system_icon(app_name) or find_system_icon("utilities-terminal")
+    # -- Try to get a more accurate icon name from .desktop file.
+
+    icon_name = get_icon_name_from_desktop(app_dir) or app_name
+
+    system_icon = find_system_icon(icon_name) or find_system_icon("utilities-terminal")
     if system_icon:
         shutil.copy(system_icon, icon_dest)
-        # print(f"Copied system icon to {icon_dest}")
     else:
-        raise FileNotFoundError(f"❌ Error: No system icon found for {app_name}.")
+        raise FileNotFoundError(f"❌ Error: No system icon found for {icon_name}.")
 
 
 def fix_desktop_entry(app_name, app_dir, binary_path):
     """Ensure the AppImage contains a valid .desktop file."""
-    desktop_file_path = app_dir / f"{app_name}.desktop"
-    if not desktop_file_path.exists():
-        # print(f"No .desktop file found for {app_name}. Generating a minimal one...")
+    existing_desktops = list(app_dir.glob("*.desktop"))
+
+    if existing_desktops:
+        desktop_file_path = existing_desktops[0]
+    else:
+        desktop_file_path = app_dir / f"{app_name}.desktop"
         desktop_content = f"""[Desktop Entry]
 Type=Application
 Name={app_name}
@@ -134,7 +148,6 @@ Icon={app_name}
 
     with open(desktop_file_path, "w") as f:
         f.writelines(updated_lines)
-    # print(f"Fixed Exec path in {desktop_file_path}")
 
 
 def generate_apprun(app_dir, config):
