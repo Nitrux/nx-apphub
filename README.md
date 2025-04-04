@@ -25,6 +25,7 @@ NX AppHub CLI requires the following utilities to function properly:
 - libfuse2t64
 - patchelf
 - file
+- zstd
 
 # Installation
 

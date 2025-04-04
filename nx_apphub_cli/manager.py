@@ -119,6 +119,9 @@ def install(app_names):
 
         # -- Process dependencies.
 
+        repos_config = config["buildinfo"].get("distrorepo", {})
+        base_repos = repos_config.get("base", [])
+        ppa_repos = {ppa["id"]: ppa for ppa in repos_config.get("ppas", [])}
         dependencies = config["buildinfo"].get("deps", [])
 
         if dependencies:
@@ -126,16 +129,39 @@ def install(app_names):
 
             terminal_width = get_terminal_size((80, 20)).columns
             print()
-            for dep in tqdm(
+            with tqdm(
                 dependencies,
                 desc="    ⏬ Fetching PKGs",
                 unit="pkg",
                 ncols=terminal_width,
                 dynamic_ncols=False,
                 bar_format="{l_bar}{bar}| {remaining:>8} • {rate_fmt:<14}"
-            ):
-                deb_path = get_latest_deb(dep, distrorepo, app_name)
-                extract_deb(deb_path, app_name)
+            ) as progress:
+                for dep in progress:
+                    if isinstance(dep, dict):
+                        pkg_name = dep["name"]
+                        repo_id = dep.get("repo")
+                        if repo_id:
+                            repo_list = [ppa_repos.get(repo_id)]
+                            if repo_list[0] is None:
+                                progress.disable = True
+                                print(f"❌ Error: Unknown repo ID '{repo_id}' for package '{pkg_name}'.")
+                                cleanup_cache(app_name)
+                                return
+                        else:
+                            repo_list = base_repos
+                    else:
+                        pkg_name = dep
+                        repo_list = base_repos
+
+                    try:
+                        deb_path = get_latest_deb(pkg_name, repo_list, app_name)
+                        extract_deb(deb_path, app_name)
+                    except RuntimeError as e:
+                        progress.disable = True
+                        print(e)
+                        progress.close()
+                        return
         else:
             print("📦 No dependencies listed.")
 

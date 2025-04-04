@@ -92,7 +92,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     # -- Skip downloading if the package is in the exclusion list.
 
     if pkg_name in excluded_packages:
-        print(f"⚠️ Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppImage.")
+        print(f"\n\n        ⚠️ Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppImage.\n")
         return None
     
     package_dir = cache_dir / package_name
@@ -104,68 +104,96 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         sys.exit(1)
 
     for repo in repos:
-        distro = repo['distro'].lower()
-        release = repo['release']
-        arch = repo['arch']
+        if "ppa" in repo:
+            ppa = repo["ppa"].strip()
+            if not ppa or "/" not in ppa:
+                print(f"❌ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
+                continue
+            try:
+                distro = repo["distro"].lower()
+                release = repo["release"]
+                arch = repo["arch"]
+            except KeyError as e:
+                print(f"❌ Error: Missing required key '{e.args[0]}' in repository entry: {repo}")
+                continue
 
-        if distro not in ["debian", "ubuntu", "devuan", "kde-neon", "nitrux", "debian-snapshots"]:
-            if not quiet:
-                print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu, Devuan, KDE Neon.")
-            continue
+            ppa_url = f"https://ppa.launchpadcontent.net/{ppa}/{distro}"
 
-        # -- Select the correct mirror list.
-
-        # -- NOTE: The options "nitrux" and "debian-snapshots" are purposefully undocumented because I'm only adding them to test
-        # -- building the MauiKit AppImages using the packages in our repositories and the packages used to compile them, which is the whole reason I made this, lol.
-
-        if distro == "debian":
-            mirror_list = debian_mirrors
-        elif distro == "ubuntu":
-            mirror_list = ubuntu_mirrors
-        elif distro == "devuan":
-            mirror_list = devuan_mirrors
-        elif distro == "kde-neon":
-            mirror_list = kde_neon_mirrors
-        elif distro == "nitrux":
-            mirror_list = nitrux_mirrors
-        elif distro == "debian-snapshots":
-            mirror_list = debian_snapshots
-        else:
-            continue
-
-        for mirror in mirror_list:
-            pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name)
+            pkg_info = fetch_package_metadata(ppa_url, release, arch, pkg_name)
             if pkg_info:
-                deb_url = f"{mirror}/{pkg_info}"
-                
+                deb_url = f"{ppa_url}/{pkg_info}"
                 if not quiet:
                     print(f"Downloading {pkg_name} from {deb_url}...")
-
                 return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
 
-    print(f"❌ Error: Failed to find package '{pkg_name}' in any repository.\n")
+        else:
+            distro = repo['distro'].lower()
+            release = repo['release']
+            arch = repo['arch']
+
+            if distro not in ["debian", "ubuntu", "devuan", "kde-neon", "nitrux", "debian-snapshots"]:
+                if not quiet:
+                    print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu, Devuan, KDE Neon.")
+                continue
+
+            # -- Select the correct mirror list.
+
+            # -- NOTE: The options "nitrux" and "debian-snapshots" are purposefully undocumented because I'm only adding them to test
+            # -- building the MauiKit AppImages using the packages in our repositories and the packages used to compile them, which is the whole reason I made this, lol.
+
+            if distro == "debian":
+                mirror_list = debian_mirrors
+            elif distro == "ubuntu":
+                mirror_list = ubuntu_mirrors
+            elif distro == "devuan":
+                mirror_list = devuan_mirrors
+            elif distro == "kde-neon":
+                mirror_list = kde_neon_mirrors
+            elif distro == "nitrux":
+                mirror_list = nitrux_mirrors
+            elif distro == "debian-snapshots":
+                mirror_list = debian_snapshots
+            else:
+                continue
+
+            for mirror in mirror_list:
+                components = repo.get("components", ["main"])
+
+                for component in components:
+                    pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name, component)
+                    if pkg_info:
+                        deb_url = f"{mirror}/{pkg_info}"
+                        if not quiet:
+                            print(f"Downloading {pkg_name} from {deb_url}...")
+                        return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
+
+    sys.stdout.write("\n\n")
+    sys.stdout.flush()
     cleanup_cache(package_name)
-    sys.exit(1)
+    raise RuntimeError(f"\n❌ Error: Package '{pkg_name}' could not be found in any repository.\n")
 
 
-def fetch_package_metadata(mirror, release, arch, pkg_name):
-    """Fetches the latest package path from Packages.gz metadata."""
-    packages_url = f"{mirror}/dists/{release}/main/binary-{arch}/Packages.gz"
+def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
+    """Fetch the latest package path from Packages.gz metadata."""
+    packages_url = f"{mirror}/dists/{release}/{component}/binary-{arch}/Packages.gz"
 
     try:
         response = requests.get(packages_url, timeout=10, stream=True)
         response.raise_for_status()
 
-        with gzip.open(response.raw, "rt") as f:
-            packages_data = f.read()
+        with gzip.open(response.raw, "rt", encoding="utf-8", errors="ignore") as f:
+            current_package = None
+            filename = None
 
-        # -- Extract the package filename from metadata.
+            for line in f:
+                line = line.strip()
 
-        pkg_regex = rf"^Package: {pkg_name}\n(?:.*\n)*?^Filename: (\S+)"
-        match = re.search(pkg_regex, packages_data, re.MULTILINE)
+                if line.startswith("Package: "):
+                    current_package = line.split("Package: ")[1]
 
-        if match:
-            return match.group(1)
+                elif line.startswith("Filename: ") and current_package == pkg_name:
+                    filename = line.split("Filename: ")[1]
+                    return filename
 
     except requests.RequestException as e:
         print(f"❌ Error: Failed to fetch metadata from {packages_url}: {e}\n")

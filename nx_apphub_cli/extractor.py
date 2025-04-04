@@ -31,49 +31,50 @@ from pathlib import Path
 
 def extract_deb(deb_path, package_name, quiet=True):
     """Extracts a .deb package into its designated AppDir."""
-    
+
+    if deb_path is None:
+        return
+
     package_dir = Path.home() / ".cache/nx-apphub-cli" / package_name
     app_dir = package_dir / "AppDir"
     deb_dir = package_dir / "debs"
 
     app_dir.mkdir(parents=True, exist_ok=True)
-    
     temp_dir = deb_dir / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     if not quiet:
-        print(f"Extracting {deb_path}...")
+        print(f"🗄️ Extracting {deb_path}...")
 
     try:
-        # -- Extract control, data, and metadata from the .deb package.
-
         subprocess.run(["ar", "x", deb_path], cwd=temp_dir, check=True)
-
-        # -- Detect the correct data archive file.
 
         archive_files = list(temp_dir.glob("data.tar.*"))
         if not archive_files:
-            print(f"Error: No valid data archive found in {deb_path}.")
+            print(f"❌ Error: No valid data archive found in {deb_path}.")
             return
 
         data_archive = archive_files[0]
 
-        # -- Extract the correct archive type.
-    
         if data_archive.suffix == ".xz":
             subprocess.run(["tar", "xf", str(data_archive), "-C", str(app_dir)], check=True)
         elif data_archive.suffix == ".gz":
             subprocess.run(["tar", "xzf", str(data_archive), "-C", str(app_dir)], check=True)
         elif data_archive.suffix == ".zst":
             decompressed_archive = temp_dir / "data.tar"
-            subprocess.run(["unzstd", "-d", str(data_archive), "-o", str(decompressed_archive)], check=True)
+            subprocess.run(
+                ["unzstd", "-d", str(data_archive), "-o", str(decompressed_archive)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
             subprocess.run(["tar", "xf", str(decompressed_archive), "-C", str(app_dir)], check=True)
         else:
-            print(f"Error: Unsupported archive format in {deb_path}.")
+            print(f"❌ Error: Unsupported archive format in {deb_path}.")
             return
 
         if not quiet:
-            print(f"Extracted {deb_path} successfully.")
+            print(f"🗃️ Extracted {deb_path} successfully.")
 
         # -- Ensure that libraries are correctly moved without overwriting existing ones.
 
@@ -88,8 +89,8 @@ def extract_deb(deb_path, package_name, quiet=True):
                     print(f"Moved {extracted_file} → {target_file}")
 
     except subprocess.CalledProcessError as e:
-        print(f"Error: Extraction failed for {deb_path}. {e}")
+        print(f"❌ Error: Extraction failed for {deb_path}. {e}")
         return
-    
+
     finally:
         shutil.rmtree(temp_dir)

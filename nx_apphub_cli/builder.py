@@ -305,7 +305,7 @@ if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 # -- Set environment variables for proper execution inside the AppImage.
 
 export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin"
-export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy"
+export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/inkscape:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy"
 export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
 
 
@@ -359,6 +359,7 @@ def patch_binary_rpath(binary_path, config):
             f"$ORIGIN/../..{setlibpath}",
             f"$ORIGIN/../..{setlibpath}/{multiarch_triplet}",
             f"$ORIGIN/../..{setlibpath}64",
+            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/inkscape",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/qml",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt6/qml",

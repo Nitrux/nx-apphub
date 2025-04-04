@@ -25,11 +25,15 @@
 import argparse
 import sys
 
+from shutil import get_terminal_size
+from tqdm import tqdm
+
 from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
 from nx_apphub_cli.config import load_yaml_config, validate_yaml_config
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.manager import install, remove, search, show, update, downgrade
+from nx_apphub_cli.utils import cleanup_cache
 
 
 def main():
@@ -99,14 +103,64 @@ def main():
 
         setup_appimage_directories(package_name, config["buildinfo"]["binarypath"])
 
+        for repo_group in config.get("buildinfo", {}).get("distrorepo", {}).values():
+            for repo in repo_group:
+                for key in ["distro", "release", "arch"]:
+                    if key not in repo:
+                        print(f"❌ Error: Missing required key '{key}' in repo: {repo}")
+                        sys.exit(1)
+
+        distrepo = config["buildinfo"].get("distrorepo", {})
+        base_repos = distrepo.get("base", [])
+        ppa_repos = {ppa["id"]: ppa for ppa in distrepo.get("ppas", [])}
+
         dependencies = config["buildinfo"].get("deps", [])
-        repos = config["buildinfo"].get("distrorepo", [])
 
-        for dep in dependencies:
-            deb_path = get_latest_deb(dep, repos, package_name)
-            extract_deb(deb_path, package_name)
+        if dependencies:
+            print(f"📥 Downloading {len(dependencies)} dependencies:\n")
 
+            terminal_width = get_terminal_size((80, 20)).columns
+            with tqdm(
+                dependencies,
+                desc="    ⏬ Fetching PKGs",
+                unit="pkg",
+                ncols=terminal_width,
+                dynamic_ncols=False,
+                bar_format="{l_bar}{bar}| {remaining:>8} • {rate_fmt:<14}"
+            ) as progress:
+                for dep in progress:
+                    if isinstance(dep, dict):
+                        pkg_name = dep["name"]
+                        repo_id = dep.get("repo")
+                        if repo_id:
+                            repo_list = [ppa_repos.get(repo_id)]
+                            if repo_list[0] is None:
+                                progress.disable = True
+                                print(f"❌ Error: Unknown repo ID '{repo_id}' for package '{pkg_name}'.")
+                                cleanup_cache(package_name)
+                                return
+                        else:
+                            repo_list = base_repos
+                    else:
+                        pkg_name = dep
+                        repo_list = base_repos
+
+                    try:
+                        deb_path = get_latest_deb(pkg_name, repo_list, package_name)
+                        if deb_path is not None:
+                            extract_deb(deb_path, package_name)
+                    except RuntimeError as e:
+                        progress.disable = True
+                        print(e)
+                        progress.close()
+                        cleanup_cache(package_name)
+                        return
+        else:
+            print("📦 No dependencies listed.")
+
+        print()
         prepare_appimage(config)
+
         print("\n✅ AppImage creation complete!\n")
     else:
         parser.print_help()
