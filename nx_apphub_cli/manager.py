@@ -120,8 +120,16 @@ def install(app_names):
         # -- Process dependencies.
 
         repos_config = config["buildinfo"].get("distrorepo", {})
-        base_repos = repos_config.get("base", [])
-        ppa_repos = {ppa["id"]: ppa for ppa in repos_config.get("ppas", [])}
+
+        #  -- Support both list and dict formats.
+
+        if isinstance(repos_config, list):
+            base_repos = repos_config
+            ppa_repos = {}
+        else:
+            base_repos = repos_config.get("base", [])
+            ppa_repos = {ppa["id"]: ppa for ppa in repos_config.get("ppas", [])}
+
         dependencies = config["buildinfo"].get("deps", [])
 
         if dependencies:
