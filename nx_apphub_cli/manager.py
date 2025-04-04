@@ -89,7 +89,7 @@ def install(app_names):
 
         app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
         if not app_yaml_path.exists():
-            print(f"❌ Error: No YAML found for {app_name} ({system_arch}) in repository.")
+            print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.")
             continue
 
         config = load_yaml_config(app_yaml_path)
@@ -98,7 +98,7 @@ def install(app_names):
         # -- Ensure version is valid.
 
         if not app_version or app_version == "unknown":
-            print(f"❌ Error: No valid version found for {app_name}. Skipping installation.")
+            print(f"    ❌ Error: No valid version found for {app_name}. Skipping installation.")
             continue
 
         # -- Check if **any version** of the AppImage is already installed.
@@ -107,14 +107,14 @@ def install(app_names):
 
         if installed_appbox:
             installed_version = installed_appbox.stem.split("-")[1]
-            print(f"ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.\n")
+            print(f"    ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.\n")
             continue
 
         # -- Ensure `distrorepo` is explicitly defined.
 
         distrorepo = config["buildinfo"].get("distrorepo")
         if not distrorepo:
-            print(f"❌ Error: No 'distrorepo' specified for {app_name}. Skipping installation.")
+            print(f"    ❌ Error: No 'distrorepo' specified for {app_name}. Skipping installation.")
             continue
 
         # -- Process dependencies.
@@ -125,10 +125,10 @@ def install(app_names):
             print(f"📥 Downloading {len(dependencies)} dependencies:")
 
             terminal_width = get_terminal_size((80, 20)).columns
-
+            print()
             for dep in tqdm(
                 dependencies,
-                desc="   ⏬ Fetching PKGs",
+                desc="    ⏬ Fetching PKGs",
                 unit="pkg",
                 ncols=terminal_width,
                 dynamic_ncols=False,
@@ -141,7 +141,7 @@ def install(app_names):
 
         # -- Build AppImage.
 
-        print("\n🛠 Building AppImage...\n")
+        print("\n🛠  Building AppImage...\n")
         prepare_appimage(config, install_mode=True)
 
         # -- Verify new AppBox exists before final confirmation.
@@ -165,7 +165,7 @@ def remove(app_names):
     if isinstance(app_names, str):
         app_names = [app_names]
 
-    print(f"\n[ 🗑 Removing: {', '.join(app_names)} ]\n")
+    print(f"\n[ 🗑  Removing: {', '.join(app_names)} ]\n")
 
     removed_apps = []
     missing_apps = []
@@ -190,12 +190,12 @@ def remove(app_names):
     # --Display removed apps.
 
     if removed_apps:
-        print("🟢 Successfully Removed:\n" + "\n".join(removed_apps))
+        print("🟢 Successfully Removed:\n\n" + "\n".join(removed_apps))
 
     # -- Display apps that could not be removed.
 
     if missing_apps:
-        print("🔴 Skipped:\n" + "\n".join(missing_apps))
+        print("🔴 Skipped:\n\n" + "\n".join(missing_apps))
 
     print()
 
@@ -262,7 +262,7 @@ def update(app_names):
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
     else:
-        print("🔄 Fetching latest repository changes...")
+        print("    🔄 Fetching latest repository changes...")
         subprocess.run(
             ["git", "-C", str(repo_base_dir), "pull"],
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -276,14 +276,14 @@ def update(app_names):
         installed_app = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
 
         if not installed_app:
-            print(f"❌ Error: {app_name} is not installed. Cannot update.\n")
+            print(f"    ❌ Error: {app_name} is not installed. Cannot update.\n")
             continue
 
         # -- Extract version from installed file.
 
         installed_parts = installed_app.stem.split("-")
         if len(installed_parts) < 2:
-            print(f"❌ Error: Could not determine installed version for {app_name}.\n")
+            print(f"    ❌ Error: Could not determine installed version for {app_name}.\n")
             continue
 
         installed_version = "-".join(installed_parts[1:-1])
@@ -292,7 +292,7 @@ def update(app_names):
 
         app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
         if not app_yaml_path.exists():
-            print(f"❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
+            print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
             continue
 
         # -- Load YAML and check latest version.
@@ -301,14 +301,14 @@ def update(app_names):
         latest_version = config["buildinfo"].get("version", "unknown")
 
         if not latest_version or latest_version == "unknown":
-            print(f"❌ Error: No valid version information found for {app_name}. Aborting update.\n")
+            print(f"    ❌ Error: No valid version information found for {app_name}. Aborting update.\n")
             continue
 
         if installed_version == latest_version:
-            print(f"✅ {app_name} is already up to date (version {installed_version}).\n")
+            print(f"    ✅ {app_name} is already up to date (version {installed_version}).\n")
             continue
 
-        print(f"\n    🔄 New version available: {latest_version} (Installed: {installed_version})\n")
+        print(f"    🔄 New version available: {latest_version} (Installed: {installed_version})\n")
 
         # -- Remove executable permission before backup.
 
@@ -332,7 +332,6 @@ def update(app_names):
 
         try:
             installed_app.unlink()
-            print(f"🗑 Removed old AppImage: {installed_app}")
         except OSError as e:
             print(f"❌ Error deleting {installed_app}: {e}")
             continue
@@ -382,7 +381,7 @@ def downgrade(app_names):
         backups = sorted(backup_dir.glob(f"{app_name}-*-{system_arch}.tar"), reverse=True)
 
         if not backups:
-            print(f"❌ No backups found for {app_name}.\n")
+            print(f"    ❌ No backups found for {app_name}.\n")
             continue
 
         # -- Display available backups.
@@ -401,7 +400,7 @@ def downgrade(app_names):
             if choice.isdigit() and 1 <= int(choice) <= len(backups):
                 index = int(choice) - 1
                 break
-            print("⚠️ Invalid selection. Please enter a valid number.")
+            print("\n    ⚠️ Invalid selection. Please enter a valid number.")
 
         selected_backup = backups[index]
 
@@ -458,7 +457,7 @@ def show():
         return
 
     for app in installed_apps:
-        print(f"✅ {app.name}")
+        print(f"    ✅ {app.name}")
 
     print(f"\n📁 Total: {len(installed_apps)} installed in {install_dir}\n")
 

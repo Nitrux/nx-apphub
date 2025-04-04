@@ -35,7 +35,7 @@ from nx_apphub_cli.manager import install, remove, search, show, update, downgra
 def main():
     parser = argparse.ArgumentParser(
         prog="nx-apphub-cli",
-        description="NX AppHub CLI — Install, update, remove, and build AppImages"
+        description="NX AppHub CLI — Lightweight command-line tool for managing and building applications in Nitrux"
     )
     
     subparsers = parser.add_subparsers(
@@ -87,7 +87,7 @@ def main():
     elif args.command == "show":
         show()
     elif args.command == "build":
-        print(f"\n[ 🛠 Building local AppImage... ]\n")
+        print(f"\n[ 🛠  Building local AppImage... ]\n")
 
         config = load_yaml_config(args.config)
 
