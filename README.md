@@ -54,8 +54,11 @@ To use NX AppHub CLI check the commands below.
 - `downgrade` → Downgrade one or more installed applications.
 - `search` → Search for specific applications.
 - `show` → Show installed applications.
-- `build` → Build an AppImage from a YAML file.
-    - _♦ Information: The command "build" is exposed to allow users to test YAML files before adding them to the curated apps repository._
+
+> _♦ Information: The command "build" is exposed to allow users to build AppImages locally._
+
+- `build` → Build an AppImage from a local YAML file.
+  - `--appdir-lint` → Debug missing shared libraries in an AppImage
 
 To create a YAML file for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
 

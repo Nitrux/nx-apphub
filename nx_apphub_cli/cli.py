@@ -73,12 +73,9 @@ def main():
 
     # -- Building command (requires YAML file).
 
-    subparser_build = subparsers.add_parser("build", help="Build an AppImage from a YAML file")
+    subparser_build = subparsers.add_parser("build", help="Build an AppImage from a local YAML file")
     subparser_build.add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
     subparser_build.add_argument("--appdir-lint", metavar="APPDIR", type=str, help="Run appdir-lint after build on the specified extracted AppDir")
-    subparser_build.add_argument("--lint-distro", type=str, choices=["ubuntu", "debian", "devuan"], help="Distro used for package index lookup")
-    subparser_build.add_argument("--lint-release", type=str, help="Release codename used for package index lookup")
-    subparser_build.add_argument("--lint-components", type=str, nargs="+", help="APT components to search in (e.g., main universe)")
 
     args = parser.parse_args()
 
