@@ -108,6 +108,13 @@ def main():
     parser.add_argument("appdir", type=str, help="Path to the AppDir or squashfs-root directory")
     parser.add_argument("--distro", type=str, default="ubuntu", choices=["ubuntu", "debian", "devuan"], help="Base distro")
     parser.add_argument("--release", type=str, default="oracular", help="Distro release")
+    parser.add_argument(
+        "--components",
+        type=str,
+        nargs="+",
+        default=["main", "universe"],
+        help="APT components to search (default: main universe)"
+    )
     args = parser.parse_args()
 
     appdir_path = detect_appdir(args.appdir)
@@ -128,30 +135,25 @@ def main():
         for src in sorted(set(sources)):
             print(f"  ↪ {src}")
         print()
+    
+    found_packages = {}
 
     print("🔎 Attempting to map to package names...\n")
-
-    found_packages = set()
-    components_to_try = ["main", "universe", "multiverse", "restricted"]
-
     for lib in sorted(missing):
-        pkg_path = None
-        for comp in components_to_try:
-            pkg_path = search_package_for_library(lib, args.distro, args.release, comp)
-            if pkg_path:
+        for component in args.components:
+            pkg = search_package_for_library(lib, args.distro, args.release, component)
+            if pkg:
+                deb_pkg = Path(pkg).parts[0]
+                found_packages[lib] = deb_pkg
+                print(f"📦 {lib} → {deb_pkg}")
                 break
-
-        if pkg_path:
-            deb_pkg = Path(pkg_path).parts[0]
-            print(f"📦 {lib} → {deb_pkg}")
-            found_packages.add(deb_pkg)
         else:
             print(f"❌ {lib} → Package not found")
 
     if found_packages:
-        print("\n📎 Suggested deps:\n")
+        print("\n📋 Suggested deps:\n")
         print("deps:")
-        print(format_yaml_deps(found_packages))
+        print(format_yaml_deps(set(found_packages.values())))
     else:
         print("\n⚠️ No packages were matched from the indexes.")
 
