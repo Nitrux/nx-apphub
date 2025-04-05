@@ -57,7 +57,7 @@ To use NX AppHub CLI check the commands below.
 - `build` → Build an AppImage from a YAML file.
     - _♦ Information: The command "build" is exposed to allow users to test YAML files before adding them to the curated apps repository._
 
-To create a YAML fiel for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
+To create a YAML file for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
 
 # Licensing
 
