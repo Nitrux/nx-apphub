@@ -58,7 +58,23 @@ To use NX AppHub CLI check the commands below.
 > _♦ Information: The command "build" is exposed to allow users to build AppImages locally._
 
 - `build` → Build an AppImage from a local YAML file.
-  - `--appdir-lint` → Debug missing shared libraries in an AppImage
+  - `--appdir-lint` → Optionally debug missing shared libraries in an AppImage.
+
+## Examples
+
+```
+nx-apphub-cli install inkscape
+
+nx-apphub-cli remove fiery
+
+nx-apphub-cli update nano
+
+nx-apphub-cli downgrade mc
+
+nx-apphub-cli search nano mc fiery
+
+nx-apphub-cli build app.yml --appdir-lint squashfs-root/
+```
 
 To create a YAML file for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
 
