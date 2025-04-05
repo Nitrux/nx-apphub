@@ -24,16 +24,20 @@
 
 import argparse
 import sys
+import types
+import subprocess
 
 from shutil import get_terminal_size
 from tqdm import tqdm
+from pathlib import Path
 
 from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
 from nx_apphub_cli.config import load_yaml_config, validate_yaml_config
 from nx_apphub_cli.downloader import get_latest_deb
 from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.manager import install, remove, search, show, update, downgrade
-from nx_apphub_cli.utils import cleanup_cache
+from nx_apphub_cli.utils import cleanup_cache, infer_lint_metadata_from_yaml, get_architecture
+from nx_apphub_cli.appdir_lint import run_linter
 
 
 def main():
@@ -71,6 +75,10 @@ def main():
 
     subparser_build = subparsers.add_parser("build", help="Build an AppImage from a YAML file")
     subparser_build.add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
+    subparser_build.add_argument("--appdir-lint", metavar="APPDIR", type=str, help="Run appdir-lint after build on the specified extracted AppDir")
+    subparser_build.add_argument("--lint-distro", type=str, choices=["ubuntu", "debian", "devuan"], help="Distro used for package index lookup")
+    subparser_build.add_argument("--lint-release", type=str, help="Release codename used for package index lookup")
+    subparser_build.add_argument("--lint-components", type=str, nargs="+", help="APT components to search in (e.g., main universe)")
 
     args = parser.parse_args()
 
@@ -162,6 +170,40 @@ def main():
         prepare_appimage(config)
 
         print("\n✅ AppImage creation complete!\n")
+
+        if args.appdir_lint:
+            print(f"🧪 Running appdir-lint on: {args.appdir_lint}\n")
+
+            app_name = config["buildinfo"]["name"]
+            app_version = config["buildinfo"].get("version", "latest")
+            arch = get_architecture()
+            appimage_path = Path.cwd() / f"{app_name}-{app_version}-{arch}.AppImage"
+
+            lint_target = Path(args.appdir_lint).expanduser()
+
+            if not lint_target.exists():
+                print(f"📦 Extracting AppImage to squashfs-root/...")
+                subprocess.run(
+                    [str(appimage_path), "--appimage-extract"],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                lint_target = Path("squashfs-root")
+
+            lint_meta = infer_lint_metadata_from_yaml(args.config)
+
+            lint_args = types.SimpleNamespace(
+                appdir=str(lint_target),
+                distro=args.lint_distro or lint_meta.get("distro"),
+                release=args.lint_release or lint_meta.get("release"),
+                components=args.lint_components or lint_meta.get("components")
+            )
+
+            try:
+                run_linter(lint_args)
+            except Exception as e:
+                print(f"❌ appdir-lint failed: {e}")
     else:
         parser.print_help()
         sys.exit(1)

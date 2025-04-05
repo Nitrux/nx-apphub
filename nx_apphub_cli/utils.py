@@ -98,3 +98,36 @@ def get_appimagetool(quiet=True):
         except requests.RequestException as e:
             print(f"Error downloading appimagetool: {e}")
             exit(1)
+
+def infer_lint_metadata_from_yaml(yaml_path):
+    from pathlib import Path
+    import yaml
+
+    path = Path(yaml_path).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"YAML file not found: {path}")
+
+    with open(path, "r") as f:
+        config = yaml.safe_load(f)
+
+    result = {
+        "distro": None,
+        "release": None,
+        "components": [],
+    }
+
+    distros = config.get("buildinfo", {}).get("distrorepo")
+
+    if isinstance(distros, list):
+        if distros:
+            result["distro"] = distros[0].get("distro")
+            result["release"] = distros[0].get("release")
+            result["components"] = distros[0].get("components", ["main"])
+    elif isinstance(distros, dict):
+        base = distros.get("base", [])
+        if base:
+            result["distro"] = base[0].get("distro")
+            result["release"] = base[0].get("release")
+            result["components"] = base[0].get("components", ["main"])
+
+    return result
