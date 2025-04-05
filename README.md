@@ -73,7 +73,8 @@ nx-apphub-cli downgrade mc
 
 nx-apphub-cli search nano mc fiery
 
-nx-apphub-cli build app.yml || nx-apphub-cli build app.yml --appdir-lint squashfs-root/
+nx-apphub-cli build app.yml 
+  ↪ (debug) nx-apphub-cli build app.yml --appdir-lint squashfs-root/
 ```
 
 To create a YAML file for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
