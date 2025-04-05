@@ -54,9 +54,6 @@ To use NX AppHub CLI check the commands below.
 - `downgrade` → Downgrade one or more installed applications.
 - `search` → Search for specific applications.
 - `show` → Show installed applications.
-
-> _♦ Information: The command "build" allow users to build AppImages locally._
-
 - `build` → Build an AppImage from a local YAML file.
   - `--appdir-lint` → Optionally debug missing shared libraries in an AppImage.
 
