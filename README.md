@@ -34,14 +34,14 @@ To install NX AppHub CLI we recommend using pipx.
 ### Single-user
 
 ```
-pipx install git+https://github.com/Nitrux/nx-apphub-cli.git
+pipx install git+https://github.com/Nitrux/nx-apphub.git
 ```
 
 
 ### System-wide
 
 ```
-pipx install --system-site-packages git+https://github.com/Nitrux/nx-apphub-cli.git
+pipx install --system-site-packages git+https://github.com/Nitrux/nx-apphub.git
 ```
 
 # Usage
