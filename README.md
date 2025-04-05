@@ -6,14 +6,15 @@
 
 # Introduction
 
-NX AppHub CLI is a lightweight command-line tool for managing and building applications in Nitrux as AppImages.
+NX AppHub CLI is a streamlined tool for building and managing AppImages in Nitrux from simple YAML recipes — fast, portable, and fully container-aware.
 
 > _⚠️ Important: NX AppHub CLI primarily targets Nitrux OS, and using this utility in other distributions may or may not work. To request formal support for other distributions, open a PR regarding this use case._
 
 ### Requirements
 
-- Nitrux 4.0.0+
-- Python 3.10+
+- Nitrux 4.0.0 and newer.
+    - _♦ Information: To use `nx-apphub-cli` in previous versions of Nitrux use a container._
+- Python 3.10 and newer.
 
 NX AppHub CLI requires the following utilities to function properly:
 
@@ -52,10 +53,11 @@ To use NX AppHub CLI check the commands below.
 - `update` → Update one or more installed applications.
 - `downgrade` → Downgrade one or more installed applications.
 - `search` → Search for specific applications.
+- `show` → Show installed applications.
 - `build` → Build an AppImage from a YAML file.
     - _♦ Information: The command "build" is exposed to allow users to test YAML files before adding them to the curated apps repository._
 
-To create a YAML for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
+To create a YAML fiel for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
 
 # Licensing
 
