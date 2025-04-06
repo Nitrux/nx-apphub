@@ -59,6 +59,13 @@ To use NX AppHub CLI check the commands below.
 - `build` → Build an AppImage from a local YAML file.
   - `--appdir-lint` → Optionally debug missing shared libraries in an AppImage.
 - `generate` → Generate YAML template from package metadata.
+  - `--package` → Specify package name.
+  - `--distro` → Choose the distribution from which to get metadata.
+  - `--release` → The release of the selected distribution.
+  - `--arch` → Specify the target architecture.
+  - `--output` → The file name of the generated YAML file.
+  - `--description-output` → The file name of the generated metadata file.
+
 
 ## Examples
 
