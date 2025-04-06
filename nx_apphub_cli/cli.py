@@ -26,6 +26,7 @@ import argparse
 import sys
 import types
 import subprocess
+import yaml
 
 from shutil import get_terminal_size
 from tqdm import tqdm
@@ -38,6 +39,7 @@ from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.manager import install, remove, search, show, update, downgrade
 from nx_apphub_cli.utils import cleanup_cache, infer_lint_metadata_from_yaml, get_architecture
 from nx_apphub_cli.appdir_lint import run_linter
+from nx_apphub_cli.generator import generate_yaml
 
 
 def main():
@@ -76,6 +78,14 @@ def main():
     subparser_build = subparsers.add_parser("build", help="Build an AppImage from a local YAML file")
     subparser_build.add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
     subparser_build.add_argument("--appdir-lint", metavar="APPDIR", type=str, help="Run appdir-lint after build on the specified extracted AppDir")
+
+    subparser_generate = subparsers.add_parser("generate", help="Generate YAML template from package metadata")
+    subparser_generate.add_argument("--package", required=True, help="Package name")
+    subparser_generate.add_argument("--distro", required=True, help="Distribution name (e.g., ubuntu)")
+    subparser_generate.add_argument("--release", required=True, help="Release codename (e.g., oracular)")
+    subparser_generate.add_argument("--arch", default="amd64", help="Architecture (default: amd64)")
+    subparser_generate.add_argument("--components", nargs="*", default=["main"], help="APT components (default: main)")
+    subparser_generate.add_argument("--output", default="app.yml", help="Output YAML file")
 
     args = parser.parse_args()
 
@@ -201,6 +211,18 @@ def main():
                 run_linter(lint_args)
             except Exception as e:
                 print(f"❌ appdir-lint failed: {e}")
+    elif args.command == "generate":
+        data = generate_yaml(
+            args.package,
+            args.distro,
+            args.release,
+            args.arch,
+            args.components
+        )
+        if data:
+            with open(args.output, "w") as f:
+                yaml.dump(data, f, sort_keys=False, allow_unicode=True, default_flow_style=False)
+            print(f"\n✅ YAML template written to: {args.output}\n")
     else:
         parser.print_help()
         sys.exit(1)
