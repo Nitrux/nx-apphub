@@ -41,7 +41,7 @@ setup(
     },
     author="Uri Herrera",
     author_email="uri_herrera@nxos.org",
-    description="NX AppHub CLI is a lightweight command-line tool for managing and building applications in Nitrux as AppImages.",
+    description="NX AppHub CLI — Lightweight command-line tool for managing and building applications in Nitrux.",
     url="https://github.com/Nitrux/nx-apphub",
     classifiers=[
         "Programming Language :: Python :: 3",
