@@ -480,22 +480,35 @@ def downgrade(app_names):
     print("\n🎉 All requested applications have been processed!\n")
 
 
+def format_size(size_bytes):
+    for unit in ["B", "KiB", "MiB", "GiB", "TiB"]:
+        if size_bytes < 1024:
+            return f"{size_bytes:.2f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.2f} PiB"
+
+
 def show():
     """Show installed AppBoxes."""
     print("\n[ 📦 Installed AppBoxes ]\n")
 
-    installed_apps = sorted(install_dir.glob(f"*-{system_arch}.AppBox"))
+    installed_apps = list(install_dir.glob(f"*-{system_arch}.AppBox"))
 
     if not installed_apps:
         print("❌ No applications installed.")
         return
 
+    installed_apps.sort(key=lambda app: app.stat().st_size, reverse=True)
+
+    total_size = 0
+
     for app in installed_apps:
         size = app.stat().st_size
-        size_mb = size / (1024 * 1024)
-        print(f"    ✅ {app.name} ({size_mb:.2f} MB)")
+        total_size += size
+        print(f"    ✅ {app.name} ({format_size(size)})")
 
     print(f"\n📁 Total: {len(installed_apps)} installed in {install_dir}\n")
+    print(f"📦 Size: {format_size(total_size)}\n")
 
 
 # -- Export functions.
