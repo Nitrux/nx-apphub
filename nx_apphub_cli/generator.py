@@ -113,29 +113,33 @@ def parse_dependencies(dep_line):
 
 def generate_yaml(package_name, distro, release, arch, components):
     metadata = fetch_packages_metadata(distro, release, arch, components)
-    entry = parse_package_info(package_name, metadata)
+    if not metadata:
+        return None
 
+    entry = parse_package_info(package_name, metadata)
     if not entry:
-        print(f"❌ Error: Package '{package_name}' not found in metadata.")
+        print(f"Package '{package_name}' not found in metadata.")
         return None
 
     version = extract_field(entry, "Version") or "latest"
     depends = extract_field(entry, "Depends")
     deps = parse_dependencies(depends)
 
+    distro_entry = {
+        "distro": distro,
+        "release": release,
+        "arch": arch,
+        "components": components
+    }
+
     yaml_data = {
         "buildinfo": {
             "name": package_name,
             "version": version,
             "binarypath": "/usr/bin/REPLACE-ME",
-            "distrorepo": [
-                {
-                    "distro": distro,
-                    "release": release,
-                    "arch": arch,
-                    "components": components
-                }
-            ],
+            "distrorepo": {
+                "base": [distro_entry]
+            },
             "deps": deps
         },
         "apprunconf": {
