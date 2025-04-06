@@ -56,6 +56,7 @@ To use NX AppHub CLI check the commands below.
 - `show` → Show installed applications.
 - `build` → Build an AppImage from a local YAML file.
   - `--appdir-lint` → Optionally debug missing shared libraries in an AppImage.
+- `generate` → Generate YAML template from package metadata.
 
 ## Examples
 
