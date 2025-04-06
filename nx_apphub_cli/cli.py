@@ -39,7 +39,7 @@ from nx_apphub_cli.extractor import extract_deb
 from nx_apphub_cli.manager import install, remove, search, show, update, downgrade
 from nx_apphub_cli.utils import cleanup_cache, infer_lint_metadata_from_yaml, get_architecture
 from nx_apphub_cli.appdir_lint import run_linter
-from nx_apphub_cli.generator import generate_yaml
+from nx_apphub_cli.generator import generate_yaml, generate_description_md
 
 
 def main():
@@ -86,6 +86,8 @@ def main():
     subparser_generate.add_argument("--arch", default="amd64", help="Architecture (default: amd64)")
     subparser_generate.add_argument("--components", nargs="*", default=["main"], help="APT components (default: main)")
     subparser_generate.add_argument("--output", default="app.yml", help="Output YAML file")
+    subparser_generate.add_argument("--description-output", help="Output application metadata file")
+
 
     args = parser.parse_args()
 
@@ -212,17 +214,23 @@ def main():
             except Exception as e:
                 print(f"❌ appdir-lint failed: {e}")
     elif args.command == "generate":
-        data = generate_yaml(
+        yaml_data, fields = generate_yaml(
             args.package,
             args.distro,
             args.release,
             args.arch,
             args.components
         )
-        if data:
+        if yaml_data:
             with open(args.output, "w") as f:
-                yaml.dump(data, f, sort_keys=False, allow_unicode=True, default_flow_style=False)
+                yaml.dump(yaml_data, f, sort_keys=False, allow_unicode=True, default_flow_style=False)
             print(f"\n✅ YAML template written to: {args.output}\n")
+
+            if args.description_output and fields:
+                md = generate_description_md(fields)
+                with open(args.description_output, "w") as desc:
+                    desc.write(md)
+                print(f"📝 Description Markdown written to: {args.description_output}\n")
     else:
         parser.print_help()
         sys.exit(1)

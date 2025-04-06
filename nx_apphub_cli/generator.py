@@ -111,18 +111,42 @@ def parse_dependencies(dep_line):
     return deps
 
 
+def parse_fields(entry):
+    fields = {}
+    current_key = None
+    buffer = []
+
+    for line in entry.splitlines():
+        if line.strip() == "":
+            continue
+        if re.match(r"^[A-Z][A-Za-z0-9-]*: ", line):
+            if current_key:
+                fields[current_key] = " ".join(buffer).strip()
+            current_key, value = line.split(":", 1)
+            buffer = [value.strip()]
+        elif current_key:
+            buffer.append(line.strip())
+
+    if current_key:
+        fields[current_key] = " ".join(buffer).strip()
+
+    return fields
+
+
 def generate_yaml(package_name, distro, release, arch, components):
     metadata = fetch_packages_metadata(distro, release, arch, components)
     if not metadata:
-        return None
+        return None, None
 
     entry = parse_package_info(package_name, metadata)
     if not entry:
         print(f"Package '{package_name}' not found in metadata.")
-        return None
+        return None, None
 
-    version = extract_field(entry, "Version") or "latest"
-    depends = extract_field(entry, "Depends")
+    fields = parse_fields(entry)
+
+    version = fields.get("Version", "latest")
+    depends = fields.get("Depends", "")
     deps = parse_dependencies(depends)
 
     distro_entry = {
@@ -150,32 +174,36 @@ def generate_yaml(package_name, distro, release, arch, components):
             "prebuild_commands": []
         }
     }
-    return yaml_data
+    return yaml_data, fields
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Generate nx-apphub-cli YAML template from repository metadata")
-    parser.add_argument("--package", required=True, help="Package name")
-    parser.add_argument("--distro", required=True, help="Distribution name (e.g., ubuntu)")
-    parser.add_argument("--release", required=True, help="Release codename (e.g., oracular)")
-    parser.add_argument("--arch", default="amd64", help="Architecture (default: amd64)")
-    parser.add_argument("--components", nargs="*", default=["main"], help="APT components (default: main)")
-    parser.add_argument("--output", default="app.yml", help="Output YAML file")
+def generate_description_md(fields):
+    name = fields.get("Package", "UNKNOWN")
+    summary = fields.get("Description", "No summary available").split("--", 1)[-1].strip()
+    full_desc = fields.get("Description", "No description provided.")
+    homepage = fields.get("Homepage", "https://example.com")
+    license_name = fields.get("License", "Not specified in metadata")
 
-    args = parser.parse_args()
+    depends = fields.get("Depends", "").split(",")
+    depends = [d.strip().split(" ")[0].split("|")[0] for d in depends if d]
 
-    yaml_data = generate_yaml(
-        args.package,
-        args.distro,
-        args.release,
-        args.arch,
-        args.components
-    )
+    markdown = f"""# {name}
 
-    if yaml_data:
-        with open(args.output, "w") as f:
-            yaml.dump(yaml_data, f, sort_keys=False, allow_unicode=True, default_flow_style=False)
-        print(f"✅ YAML template written to: {args.output}")
+## Summary
 
-if __name__ == "__main__":
-    main()
+{summary}
+
+## Description
+
+{full_desc}
+
+## Homepage
+
+[{homepage}]({homepage})
+
+## License
+
+{license_name}
+"""
+
+    return markdown
