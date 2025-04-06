@@ -10,6 +10,8 @@ NX AppHub CLI is a streamlined tool for building and managing AppImages in Nitru
 
 > _⚠️ Important: NX AppHub CLI primarily targets Nitrux OS, and using this utility in other distributions may or may not work. To request formal support for other distributions, open a PR regarding this use case._
 
+For more in-depth information about NX AppHub CLI, please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
+
 ### Requirements
 
 - Nitrux 4.0.0 and newer.
@@ -82,8 +84,6 @@ nx-apphub-cli generate \
   --components main \
   --output mc.yml
 ```
-
-To create a YAML file for NX AppHub CLI please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
 
 # Licensing
 
