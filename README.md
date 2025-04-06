@@ -73,6 +73,8 @@ nx-apphub-cli downgrade mc
 
 nx-apphub-cli search nano mc fiery
 
+nx-apphub-cli show
+
 nx-apphub-cli build app.yml 
   ↪ (debug) nx-apphub-cli build app.yml --appdir-lint squashfs-root/
 
