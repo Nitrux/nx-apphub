@@ -491,7 +491,9 @@ def show():
         return
 
     for app in installed_apps:
-        print(f"    ✅ {app.name}")
+        size = app.stat().st_size
+        size_mb = size / (1024 * 1024)
+        print(f"    ✅ {app.name} ({size_mb:.2f} MB)")
 
     print(f"\n📁 Total: {len(installed_apps)} installed in {install_dir}\n")
 
