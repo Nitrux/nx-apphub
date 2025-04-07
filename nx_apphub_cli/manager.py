@@ -495,7 +495,7 @@ def show():
     installed_apps = list(install_dir.glob(f"*-{system_arch}.AppBox"))
 
     if not installed_apps:
-        print("❌ No applications installed.")
+        print("❌ No applications installed.\n")
         return
 
     installed_apps.sort(key=lambda app: app.stat().st_size, reverse=True)
