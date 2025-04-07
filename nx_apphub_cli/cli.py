@@ -204,9 +204,9 @@ def main():
 
             lint_args = types.SimpleNamespace(
                 appdir=str(lint_target),
-                distro=args.lint_distro or lint_meta.get("distro"),
-                release=args.lint_release or lint_meta.get("release"),
-                components=args.lint_components or lint_meta.get("components")
+                distro=lint_meta.get("distro"),
+                release=lint_meta.get("release"),
+                components=lint_meta.get("components")
             )
 
             try:
