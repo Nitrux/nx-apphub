@@ -192,6 +192,10 @@ def main():
                 lint_target = Path(args.appdir_lint).expanduser()
 
                 if not lint_target.exists():
+                    if not appimage_path.exists():
+                        print(f"❌ AppImage not found: {appimage_path}")
+                        sys.exit(1)
+
                     print(f"📦 Extracting AppImage to squashfs-root/...")
                     subprocess.run(
                         [str(appimage_path), "--appimage-extract"],
