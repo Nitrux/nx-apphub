@@ -46,7 +46,7 @@ def main():
     try:
         parser = argparse.ArgumentParser(
         prog="nx-apphub-cli",
-        description="NX AppHub CLI — Lightweight command-line tool for managing and building applications in Nitrux"
+        description="NX AppHub CLI — Lightweight command-line tool for managing and building applications in Nitrux."
         )
         
         subparsers = parser.add_subparsers(

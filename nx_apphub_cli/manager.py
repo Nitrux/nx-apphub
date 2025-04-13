@@ -263,7 +263,7 @@ def search(app_names):
         if app_yaml_path.exists():
             config = load_yaml_config(app_yaml_path)
             app_version = config["buildinfo"].get("version", "unknown")
-            found_apps.append(f"    ✅ {app_name} - Version: {app_version}")
+            found_apps.append(f"    ✅ {app_name} - Version: {app_version} - Arch: {system_arch}")
         else:
             missing_apps.append(f"    ❌ {app_name}")
 
