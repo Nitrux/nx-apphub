@@ -121,16 +121,33 @@ def main():
 
             setup_appimage_directories(package_name, config["buildinfo"]["binarypath"])
 
-            for repo_group in config.get("buildinfo", {}).get("distrorepo", {}).values():
+            distrorepo = config.get("buildinfo", {}).get("distrorepo", {})
+
+            if isinstance(distrorepo, list):
+                repo_groups = [distrorepo]
+            elif isinstance(distrorepo, dict):
+                repo_groups = distrorepo.values()
+            else:
+                repo_groups = []
+
+            for repo_group in repo_groups:
                 for repo in repo_group:
                     for key in ["distro", "release", "arch"]:
                         if key not in repo:
                             print(f"❌ Error: Missing required key '{key}' in repo: {repo}")
                             sys.exit(1)
 
-            distrepo = config["buildinfo"].get("distrorepo", {})
-            base_repos = distrepo.get("base", [])
-            ppa_repos = {ppa["id"]: ppa for ppa in distrepo.get("ppas", [])}
+            distrorepo = config["buildinfo"].get("distrorepo", {})
+
+            if isinstance(distrorepo, list):
+                base_repos = distrorepo
+                ppa_repos = {}
+            elif isinstance(distrorepo, dict):
+                base_repos = distrorepo.get("base", [])
+                ppa_repos = {ppa["id"]: ppa for ppa in distrorepo.get("ppas", [])}
+            else:
+                base_repos = []
+                ppa_repos = {}
 
             dependencies = config["buildinfo"].get("deps", [])
 
