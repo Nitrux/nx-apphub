@@ -178,7 +178,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
     packages_url = f"{mirror}/dists/{release}/{component}/binary-{arch}/Packages.gz"
 
     try:
-        response = requests.get(packages_url, timeout=10, stream=True)
+        response = requests.get(packages_url, timeout=20, stream=True)
         response.raise_for_status()
 
         with gzip.open(response.raw, "rt", encoding="utf-8", errors="ignore") as f:
@@ -196,7 +196,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
                     return filename
 
     except requests.RequestException as e:
-        print(f"❌ Error: Failed to fetch metadata from {packages_url}: {e}\n")
+        print(f"\n❌ Error: Failed to fetch metadata from {packages_url}: {e}\n")
 
     return None
 
@@ -210,7 +210,7 @@ def download_file(url, dest_path, quiet=True):
 
     response = requests.get(url, stream=True)
     if response.status_code != 200:
-        print(f"❌ Error: Failed to download {url}. HTTP {response.status_code}\n")
+        print(f"\n❌ Error: Failed to download {url}. HTTP {response.status_code}\n")
         return None
 
     with open(dest_path, "wb") as f:
