@@ -29,7 +29,7 @@ from pathlib import Path
 
 import requests
 
-from nx_apphub_cli.utils import cleanup_cache
+from .utils import cleanup_cache
 
 
 # -- Base cache directory for downloads.

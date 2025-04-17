@@ -31,8 +31,8 @@ from pathlib import Path
 
 import requests
 
-from nx_apphub_cli.config import get_apprunconf_value
-from nx_apphub_cli.utils import cleanup_cache, get_appimagetool, get_architecture
+from .config import get_apprunconf_value
+from .utils import cleanup_cache, get_appimagetool, get_architecture
 
 
 # -- Base working directory for all packages.
