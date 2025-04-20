@@ -181,6 +181,7 @@ def generate_description_md(fields):
     name = fields.get("Package", "UNKNOWN")
     summary = fields.get("Description", "No summary available").split("--", 1)[-1].strip()
     full_desc = fields.get("Description", "No description provided.")
+    apphub_category = fields.get("Category", "Not specified in metadata.")
     homepage = fields.get("Homepage", "https://example.com")
     license_name = fields.get("License", "Not specified in metadata")
 
@@ -196,6 +197,10 @@ def generate_description_md(fields):
 ## Description
 
 {full_desc}
+
+## Category
+
+{apphub_category}
 
 ## Homepage
 
