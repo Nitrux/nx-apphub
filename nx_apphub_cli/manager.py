@@ -511,6 +511,23 @@ def show():
     print(f"📦 Size: {format_size(total_size)}\n")
 
 
+def get_search_results(app_names):
+    """Return structured search results for use in GUI."""
+    results = []
+
+    for app_name in app_names:
+        app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
+        if app_yaml_path.exists():
+            config = load_yaml_config(app_yaml_path)
+            results.append({
+                "name": app_name,
+                "version": config["buildinfo"].get("version", "unknown"),
+                "arch": system_arch
+            })
+
+    return results
+
+
 # -- Export functions.
 
 __all__ = ["install", "remove", "update", "downgrade", "search", "show"]
