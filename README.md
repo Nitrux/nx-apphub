@@ -20,14 +20,47 @@ For more in-depth information about NX AppHub CLI, please see the [Wiki](https:/
 
 NX AppHub CLI requires the following utilities to function properly:
 
-- appstream
-- binutils
-- file
-- fuse3
-- git
-- libfuse2t64
-- patchelf
-- zstd
+* _♦ Information: Refer to each distribution's package index or search tools for the correct package names._
+
+**Debian/Ubuntu/Devuan**:
+
+```
+appstream
+binutils
+file
+fuse3
+git
+libfuse2t64
+patchelf
+zstd
+```
+
+**Arch Linux**
+
+```
+appstream
+binutils
+file
+fuse3
+git
+fuse2
+patchelf
+zstd
+```
+
+**Fedora**
+
+```
+appstream
+binutils
+file
+fuse 
+fuse3 
+fuse-libs
+git
+patchelf
+zstd
+```
 
 # Installation
 
