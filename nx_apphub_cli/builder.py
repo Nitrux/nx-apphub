@@ -392,6 +392,7 @@ def patch_binary_rpath(binary_path, config):
             check=True
         )
         print(f"✔️ Patched RPATH for: {binary_path}")
+        print()
     except subprocess.CalledProcessError as e:
         print(f"❌ Error: Failed to patch RPATH for {binary_path}: {e}")
 

@@ -101,12 +101,19 @@ def validate_yaml_config(config):
             if not isinstance(value, expected_type):
                 print(f"❌ Error: Invalid type for '{section}.{key}'. Expected {expected_type.__name__}, got {type(value).__name__}.\n")
                 sys.exit(1)
-    
+
     sandbox = config.get("sandbox", {})
     if not isinstance(sandbox, dict):
         raise ValueError("sandbox must be a dictionary")
 
     sandbox_type = sandbox.get("type", "none")
+
+    if sandbox_type == "firejail":
+        sandbox_name = sandbox.get("name")
+        if not sandbox_name:
+            print("❌ Error: Missing required 'name' key in the 'sandbox' section for Firejail.\n")
+            sys.exit(1)
+
     if sandbox_type not in ("bwrap", "firejail", "none"):
         raise ValueError("sandbox.type must be one of: bwrap, firejail, none")
 

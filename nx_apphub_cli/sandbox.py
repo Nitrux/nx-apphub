@@ -23,6 +23,7 @@
 #############################################################################################################################################################################
 
 import os
+from pathlib import Path
 
 
 # -- Bubblewrap flag mappings --
@@ -74,16 +75,64 @@ def get_known_apparmor_profiles():
         return set()
 
 
+def generate_firejail_profile(profile_name: str):
+    """Generate a minimal Firejail profile and save it."""
+    
+    profile_dir = Path.home() / ".local/share/nx-apphub-cli/firejail.d"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    
+    profile_path = profile_dir / f"{profile_name}.profile"
+    
+    profile_content = f"""# Minimal Firejail profile for {profile_name}
+
+# Enable network access (firejail netfilter)
+netfilter
+
+# Restrict filesystem access
+private
+noroot
+restrict-namespaces
+seccomp
+disable-mnt
+private-cache
+private-cwd
+private-dev
+caps
+"""
+
+    # -- Write the profile to the file.
+
+    with open(profile_path, "w") as f:
+        f.write(profile_content)
+
+    print(f"🔒 Firejail profile saved to: {profile_path}")
+    return profile_path
+
+
 def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
     """Return the appropriate sandbox execution line."""
     sandbox_type = sandbox.get("type", "none")
 
     if sandbox_type == "firejail":
-        profile = sandbox.get("aa_profile", "none")
-        if profile != "none":
-            return f'exec /usr/bin/firejail --apparmor="{profile}" "$APPDIR{exec_cmd}" "$@"'
+
+        # -- Dynamically determine the profile name based on the app or default to 'default-appbox'.
+
+        profile_name = f"{sandbox.get('name', 'default-appbox')}-profile"
+        firejail_profile = str(Path.home() / f".local/share/nx-apphub-cli/firejail.d/{profile_name}")
+
+        # -- Check if the Firejail profile exists; if not, generate it.
+
+        if not os.path.exists(firejail_profile):
+            firejail_profile = generate_firejail_profile(profile_name)
+
+        apparmor_profile = sandbox.get("aa_profile", "none")
+
+        # -- Use the profile in the firejail command.
+
+        if apparmor_profile != "none":
+            return f'exec /usr/bin/firejail --profile={firejail_profile} --apparmor="{apparmor_profile}" "$APPDIR{exec_cmd}" "$@"'
         else:
-            return f'exec /usr/bin/firejail "$APPDIR{exec_cmd}" "$@"'
+            return f'exec /usr/bin/firejail --profile={firejail_profile} "$APPDIR{exec_cmd}" "$@"'
 
     elif sandbox_type == "bwrap":
         bwrap_args = ["bwrap"]
