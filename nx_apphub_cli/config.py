@@ -149,24 +149,25 @@ def validate_yaml_config(config):
                 sys.exit(1)
 
         for key in bwrap_list_flags:
-            if key in sandbox and not isinstance(sandbox[key], list):
-                print(f"❌ Error: 'sandbox.{key}' must be a list.\n")
-                sys.exit(1)
-
-            if key == "bwrap_env":
-                for item in sandbox[key]:
-                    if not isinstance(item, dict) or len(item) != 1:
-                        print("❌ Error: Each item in 'sandbox.bwrap_env' must be a dictionary with a single key-value pair.\n")
-                        sys.exit(1)
-                    for k, v in item.items():
-                        if not isinstance(k, str) or not isinstance(v, str):
-                            print("❌ Error: Environment variable keys and values in 'sandbox.bwrap_env' must be strings.\n")
-                            sys.exit(1)
-
-            if key == "bwrap_unset-env":
-                if not all(isinstance(v, str) for v in sandbox[key]):
-                    print("❌ Error: All entries in 'sandbox.bwrap_unset-env' must be strings.\n")
+            if key in sandbox:
+                if not isinstance(sandbox[key], list):
+                    print(f"❌ Error: 'sandbox.{key}' must be a list.\n")
                     sys.exit(1)
+
+                if key == "bwrap_env":
+                    for item in sandbox["bwrap_env"]:
+                        if not isinstance(item, dict) or len(item) != 1:
+                            print("❌ Error: Each item in 'sandbox.bwrap_env' must be a dictionary with a single key-value pair.\n")
+                            sys.exit(1)
+                        for k, v in item.items():
+                            if not isinstance(k, str) or not isinstance(v, str):
+                                print("❌ Error: Environment variable keys and values in 'sandbox.bwrap_env' must be strings.\n")
+                                sys.exit(1)
+
+                elif key == "bwrap_unset-env":
+                    if not all(isinstance(v, str) for v in sandbox["bwrap_unset-env"]):
+                        print("❌ Error: All entries in 'sandbox.bwrap_unset-env' must be strings.\n")
+                        sys.exit(1)
 
         for key in bwrap_key_value_flags:
             if key in sandbox and not isinstance(sandbox[key], (str, int)):
