@@ -26,7 +26,7 @@ import os
 from pathlib import Path
 
 
-# -- Bubblewrap flag mappings
+# -- Bubblewrap flag mappings.
 
 bwrap_boolean_flags = {
     "ro-root": ["--ro-bind", "/", "/"],
@@ -48,7 +48,6 @@ bwrap_boolean_flags = {
 }
 
 bwrap_list_flags = {
-    "bwrap_env": lambda k, v: ["--setenv", *list(v.items())[0]] if isinstance(v, dict) else [],
     "bwrap_unset-env": lambda k, v: ["--unsetenv", v],
     "cap-drop": lambda k, v: ["--cap-drop", v],
     "bind": lambda k, v: ["--bind"] + v.split(":", 1),
@@ -80,12 +79,9 @@ def generate_firejail_profile(profile_name: str):
     
     profile_dir = Path.home() / ".local/share/nx-apphub-cli/firejail.d"
     profile_dir.mkdir(parents=True, exist_ok=True)
-    
     profile_path = profile_dir / f"{profile_name}.profile"
-    
     profile_content = f"""# Minimal Firejail profile for {profile_name}
 
-# Enable network access (firejail netfilter)
 netfilter
 
 # Restrict filesystem access
@@ -113,32 +109,20 @@ def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
     """Return the appropriate sandbox execution line."""
     sandbox_type = sandbox.get("type", "none")
 
-    # -- Handle firejail sandbox profile and aa integration.  
-
     if sandbox_type == "firejail":
-
-        # -- Dynamically determine the profile name based on the app or default to 'default-appbox'.
-
         profile_name = f"{sandbox.get('name', 'default-appbox')}-profile"
         firejail_profile = str(Path.home() / f".local/share/nx-apphub-cli/firejail.d/{profile_name}")
-
-        # -- Check if the Firejail profile exists; if not, generate it.
 
         if not os.path.exists(firejail_profile):
             firejail_profile = generate_firejail_profile(profile_name)
 
         apparmor_profile = sandbox.get("aa_profile", "none")
-
-        # -- Use the profile in the firejail command.
-
+        cmd = f'"$APPDIR{exec_cmd}" "$@"'
         if apparmor_profile != "none":
-            return f'exec /usr/bin/firejail --profile={firejail_profile} --apparmor="{apparmor_profile}" "$APPDIR{exec_cmd}" "$@"'
-        else:
-            return f'exec /usr/bin/firejail --profile={firejail_profile} "$APPDIR{exec_cmd}" "$@"'
+            return f'exec /usr/bin/firejail --profile={firejail_profile} --apparmor="{apparmor_profile}" {cmd}'
+        return f'exec /usr/bin/firejail --profile={firejail_profile} {cmd}'
 
-    # -- Handle bwrap sandbox flags.    
-
-    elif sandbox_type == "bwrap":
+    if sandbox_type == "bwrap":
         bwrap_args = ["/usr/bin/bwrap"]
 
         for key, flag in bwrap_boolean_flags.items():
@@ -146,26 +130,26 @@ def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
                 bwrap_args += flag
 
         for key, transform in bwrap_list_flags.items():
-            if key in sandbox:
-                for item in sandbox[key]:
-                    bwrap_args += transform(key, item)
+            for item in sandbox.get(key, []):
+                if isinstance(item, str):
+                    item = item.replace("~", "$HOME")
+                bwrap_args += [arg if arg.startswith("--") else f'"{arg}"' for arg in transform(key, item)]
 
-        for env in sandbox.get("bwrap_env", []):
-            if isinstance(env, dict):
-                for k, v in env.items():
+        for item in sandbox.get("bwrap_env", []):
+            if isinstance(item, dict):
+                for k, v in item.items():
                     bwrap_args += ["--setenv", k, f'"{v}"']
 
-        for var in sandbox.get("bwrap_unset-env", []):
-            bwrap_args += ["--unsetenv", var]
+        for item in sandbox.get("bwrap_unset-env", []):
+            bwrap_args += ["--unsetenv", item]
 
         for key, flag in bwrap_key_value_flags.items():
             if key in sandbox:
-                bwrap_args += [flag, str(sandbox[key])]
+                bwrap_args += [flag, f'"{sandbox[key]}"']
 
         bwrap_args.append(f'"$APPDIR{exec_cmd}"')
         bwrap_args.append('"$@"')
-        return f'exec {" ".join(bwrap_args)}'
 
-    # -- Default: no sandbox.
+        return "exec " + " ".join(bwrap_args)
 
     return f'exec "$APPDIR{exec_cmd}" "$@"'
