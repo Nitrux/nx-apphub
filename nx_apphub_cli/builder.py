@@ -480,6 +480,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     # -- Generate metadata & AppRun.
 
     print(f"📌 Setting up AppRun and metadata for: {app_name}...")
+    print()
     generate_apprun(app_dir, config)
     fix_desktop_entry(app_name, app_dir, new_binary_path)
     copy_system_icon(app_name, app_dir, config["buildinfo"].get("iconpath", None))

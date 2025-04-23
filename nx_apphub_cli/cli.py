@@ -111,11 +111,14 @@ def main():
         elif args.command == "build":
             print(f"\n[ 🛠  Building local AppImage... ]\n")
 
-            config = load_yaml_config(args.config)
-
             # -- Validate the YAML before doing anything else.
 
-            validate_yaml_config(config)
+            try:
+                config = load_yaml_config(args.config)
+                validate_yaml_config(config)
+            except ValueError as e:
+                print(f"❌ Error: {e}\n")
+                sys.exit(1)
 
             package_name = config["buildinfo"]["name"]
 

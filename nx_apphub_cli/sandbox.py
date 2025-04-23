@@ -26,30 +26,30 @@ import os
 from pathlib import Path
 
 
-# -- Bubblewrap flag mappings --
+# -- Bubblewrap flag mappings
 
 bwrap_boolean_flags = {
-    "ro-root": "--ro-bind / /",
-    "dev": "--dev /dev",
-    "proc": "--proc /proc",
-    "tmpfs": "--tmpfs /tmp",
-    "mqueue": "--mqueue /dev/mqueue",
-    "ro-home": "--ro-bind $HOME $HOME",
-    "no-net": "--unshare-net",
-    "no-ipc": "--unshare-ipc",
-    "no-pid": "--unshare-pid",
-    "unshare-uts": "--unshare-uts",
-    "unshare-cgroup": "--unshare-cgroup",
-    "new-session": "--new-session",
-    "unshare-user": "--unshare-user",
-    "cap-drop-all": "--cap-drop-all",
-    "die-with-parent": "--die-with-parent",
-    "clearenv": "--clearenv"
+    "ro-root": ["--ro-bind", "/", "/"],
+    "dev": ["--dev", "/dev"],
+    "proc": ["--proc", "/proc"],
+    "tmpfs": ["--tmpfs", "/tmp"],
+    "mqueue": ["--mqueue", "/dev/mqueue"],
+    "ro-home": ["--ro-bind", os.getenv("HOME"), os.getenv("HOME")],
+    "no-net": ["--unshare-net"],
+    "no-ipc": ["--unshare-ipc"],
+    "no-pid": ["--unshare-pid"],
+    "unshare-user": ["--unshare-user"],
+    "unshare-uts": ["--unshare-uts"],
+    "unshare-cgroup": ["--unshare-cgroup"],
+    "new-session": ["--new-session"],
+    "cap-drop-all": ["--cap-drop", "ALL"],
+    "die-with-parent": ["--die-with-parent"],
+    "clearenv": ["--clearenv"]
 }
 
 bwrap_list_flags = {
-    "env": lambda k, v: ["--setenv"] + v.split("=", 1) if "=" in v else [],
-    "unset-env": lambda k, v: ["--unsetenv", v],
+    "bwrap_env": lambda k, v: ["--setenv", *list(v.items())[0]] if isinstance(v, dict) else [],
+    "bwrap_unset-env": lambda k, v: ["--unsetenv", v],
     "cap-drop": lambda k, v: ["--cap-drop", v],
     "bind": lambda k, v: ["--bind"] + v.split(":", 1),
     "ro-bind": lambda k, v: ["--ro-bind"] + v.split(":", 1),
@@ -113,6 +113,8 @@ def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
     """Return the appropriate sandbox execution line."""
     sandbox_type = sandbox.get("type", "none")
 
+    # -- Handle firejail sandbox profile and aa integration.  
+
     if sandbox_type == "firejail":
 
         # -- Dynamically determine the profile name based on the app or default to 'default-appbox'.
@@ -134,24 +136,34 @@ def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
         else:
             return f'exec /usr/bin/firejail --profile={firejail_profile} "$APPDIR{exec_cmd}" "$@"'
 
+    # -- Handle bwrap sandbox flags.    
+
     elif sandbox_type == "bwrap":
-        bwrap_args = ["bwrap"]
+        bwrap_args = ["/usr/bin/bwrap"]
 
         for key, flag in bwrap_boolean_flags.items():
             if sandbox.get(key):
-                bwrap_args += flag.split()
+                bwrap_args += flag
 
         for key, transform in bwrap_list_flags.items():
             if key in sandbox:
                 for item in sandbox[key]:
                     bwrap_args += transform(key, item)
 
+        for env in sandbox.get("bwrap_env", []):
+            if isinstance(env, dict):
+                for k, v in env.items():
+                    bwrap_args += ["--setenv", k, f'"{v}"']
+
+        for var in sandbox.get("bwrap_unset-env", []):
+            bwrap_args += ["--unsetenv", var]
+
         for key, flag in bwrap_key_value_flags.items():
             if key in sandbox:
                 bwrap_args += [flag, str(sandbox[key])]
 
-        bwrap_args.append(f"$APPDIR{exec_cmd}")
-        bwrap_args.append("\"$@\"")
+        bwrap_args.append(f'"$APPDIR{exec_cmd}"')
+        bwrap_args.append('"$@"')
         return f'exec {" ".join(bwrap_args)}'
 
     # -- Default: no sandbox.

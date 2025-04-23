@@ -40,21 +40,25 @@ cache_dir = Path.home() / ".cache/nx-apphub-cli"
 # -- Load YAML configuration.
 
 def load_yaml_config(config_path):
+    if not os.path.isfile(config_path):
+        print(f"❌ Error: '{config_path}' is not a valid YAML file. Are you sure you passed the full path to a YAML file, not a directory?\n")
+        sys.exit(1)
+
     try:
         with open(config_path, "r") as f:
             data = yaml.safe_load(f)
 
         if not data:
-            print(f"Error: {config_path} is empty or invalid.")
+            print(f"❌ Error: {config_path} is empty or invalid.\n")
             sys.exit(1)
 
         return data
 
     except yaml.YAMLError as e:
-        print(f"YAML Parsing Error: {e}")
+        print(f"❌ YAML Parsing Error in '{config_path}': {e}\n")
         sys.exit(1)
-    except FileNotFoundError:
-        print(f"Configuration file not found: {config_path}")
+    except Exception as e:
+        print(f"❌ Unexpected error while loading '{config_path}': {e}\n")
         sys.exit(1)
 
 
@@ -104,41 +108,74 @@ def validate_yaml_config(config):
 
     sandbox = config.get("sandbox", {})
     if not isinstance(sandbox, dict):
-        raise ValueError("sandbox must be a dictionary")
+        print("❌ Error: 'sandbox' must be a dictionary.\n")
+        sys.exit(1)
 
     sandbox_type = sandbox.get("type", "none")
 
+    if sandbox_type not in ("bwrap", "firejail", "none"):
+        print("❌ Error: 'sandbox.type' must be one of: bwrap, firejail, none.\n")
+        sys.exit(1)
+
+    allowed_keys = {"type"}
+
     if sandbox_type == "firejail":
-        sandbox_name = sandbox.get("name")
-        if not sandbox_name:
+        allowed_keys.update({"name", "aa_profile"})
+
+        if "name" not in sandbox:
             print("❌ Error: Missing required 'name' key in the 'sandbox' section for Firejail.\n")
             sys.exit(1)
 
-    if sandbox_type not in ("bwrap", "firejail", "none"):
-        raise ValueError("sandbox.type must be one of: bwrap, firejail, none")
-
-    for key in bwrap_boolean_flags:
-        if key in sandbox and not isinstance(sandbox[key], bool):
-            raise ValueError(f"sandbox.{key} must be a boolean")
-
-    for key in bwrap_list_flags:
-        if key in sandbox and not isinstance(sandbox[key], list):
-            raise ValueError(f"sandbox.{key} must be a list")
-
-    for key in bwrap_key_value_flags:
-        if key in sandbox and not isinstance(sandbox[key], (str, int)):
-            raise ValueError(f"sandbox.{key} must be a string or integer")
-
-    if sandbox_type == "firejail":
         if "aa_profile" in sandbox:
             if not isinstance(sandbox["aa_profile"], str):
-                raise ValueError("sandbox.aa_profile must be a string")
-            
+                print("❌ Error: 'sandbox.aa_profile' must be a string.\n")
+                sys.exit(1)
+
             profile = sandbox["aa_profile"]
             if profile != "none":
                 known_profiles = get_known_apparmor_profiles()
                 if profile not in known_profiles:
                     print(f"⚠️ Warning: aa_profile '{profile}' does not match any profile in /etc/apparmor.d/")
                     print("\n   👉 To fix this, create or rename the profile file or set 'aa_profile: none'.\n")
+
+    if sandbox_type == "bwrap":
+        allowed_keys.update(bwrap_boolean_flags.keys())
+        allowed_keys.update(bwrap_list_flags.keys())
+        allowed_keys.update(bwrap_key_value_flags.keys())
+
+        for key in bwrap_boolean_flags:
+            if key in sandbox and not isinstance(sandbox[key], bool):
+                print(f"❌ Error: 'sandbox.{key}' must be a boolean.\n")
+                sys.exit(1)
+
+        for key in bwrap_list_flags:
+            if key in sandbox and not isinstance(sandbox[key], list):
+                print(f"❌ Error: 'sandbox.{key}' must be a list.\n")
+                sys.exit(1)
+
+            if key == "bwrap_env":
+                for item in sandbox[key]:
+                    if not isinstance(item, dict) or len(item) != 1:
+                        print("❌ Error: Each item in 'sandbox.bwrap_env' must be a dictionary with a single key-value pair.\n")
+                        sys.exit(1)
+                    for k, v in item.items():
+                        if not isinstance(k, str) or not isinstance(v, str):
+                            print("❌ Error: Environment variable keys and values in 'sandbox.bwrap_env' must be strings.\n")
+                            sys.exit(1)
+
+            if key == "bwrap_unset-env":
+                if not all(isinstance(v, str) for v in sandbox[key]):
+                    print("❌ Error: All entries in 'sandbox.bwrap_unset-env' must be strings.\n")
+                    sys.exit(1)
+
+        for key in bwrap_key_value_flags:
+            if key in sandbox and not isinstance(sandbox[key], (str, int)):
+                print(f"❌ Error: 'sandbox.{key}' must be a string or integer.\n")
+                sys.exit(1)
+
+    for key in sandbox:
+        if key not in allowed_keys:
+            print(f"❌ Error: Unknown key 'sandbox.{key}' in YAML.\n")
+            sys.exit(1)
 
     print("✅ YAML validation passed successfully.\n")
