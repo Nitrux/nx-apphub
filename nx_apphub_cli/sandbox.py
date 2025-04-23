@@ -109,6 +109,8 @@ def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
     """Return the appropriate sandbox execution line."""
     sandbox_type = sandbox.get("type", "none")
 
+    # -- Handle Firejail use.
+
     if sandbox_type == "firejail":
         profile_name = f"{sandbox.get('name', 'default-appbox')}-profile"
         firejail_profile = str(Path.home() / f".local/share/nx-apphub-cli/firejail.d/{profile_name}")
@@ -121,6 +123,8 @@ def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
         if apparmor_profile != "none":
             return f'exec /usr/bin/firejail --profile={firejail_profile} --apparmor="{apparmor_profile}" {cmd}'
         return f'exec /usr/bin/firejail --profile={firejail_profile} {cmd}'
+
+    # -- Handle Bubblewrap use.
 
     if sandbox_type == "bwrap":
         bwrap_args = ["/usr/bin/bwrap"]
