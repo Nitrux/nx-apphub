@@ -32,14 +32,14 @@ from shutil import get_terminal_size
 from tqdm import tqdm
 from pathlib import Path
 
-from nx_apphub_cli.builder import prepare_appimage, setup_appimage_directories
-from nx_apphub_cli.config import load_yaml_config, validate_yaml_config
-from nx_apphub_cli.downloader import get_latest_deb
-from nx_apphub_cli.extractor import extract_deb
-from nx_apphub_cli.manager import install, remove, search, show, update, downgrade
-from nx_apphub_cli.utils import cleanup_cache, infer_lint_metadata_from_yaml, get_architecture
-from nx_apphub_cli.appdir_lint import run_linter
-from nx_apphub_cli.generator import generate_yaml, generate_description_md
+from .builder import prepare_appimage, setup_appimage_directories
+from .config import load_yaml_config, validate_yaml_config
+from .downloader import get_latest_deb
+from .extractor import extract_deb
+from .manager import install, remove, search, show, update, downgrade
+from .utils import cleanup_cache, infer_lint_metadata_from_yaml, get_architecture
+from .appdir_lint import run_linter
+from .generator import generate_yaml, generate_description_md
 
 
 def main():
@@ -199,7 +199,8 @@ def main():
             print("\n✅ AppImage creation complete!\n")
 
             if args.appdir_lint:
-                print(f"🧪 Running appdir-lint on: {args.appdir_lint}\n")
+                print(f"🧪 Running appdir-lint on: {args.appdir_lint}")
+                print()
 
                 app_name = config["buildinfo"]["name"]
                 app_version = config["buildinfo"].get("version", "latest")

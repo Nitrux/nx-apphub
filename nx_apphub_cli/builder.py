@@ -23,6 +23,7 @@
 #############################################################################################################################################################################
 
 import os
+import sys
 import platform
 import shutil
 import subprocess
@@ -33,6 +34,7 @@ import requests
 
 from .config import get_apprunconf_value
 from .utils import cleanup_cache, get_appimagetool, get_architecture
+from .sandbox import get_sandbox_exec_block
 
 
 # -- Base working directory for all packages.
@@ -173,7 +175,6 @@ def fix_desktop_entry(app_name, app_dir, binary_path):
         if desktop_file_path != target_path:
             shutil.copy(desktop_file_path, target_path)
             desktop_file_path = target_path
-            desktop_file_path = target_path
 
         desktop_file_path = target_path
 
@@ -259,6 +260,19 @@ def generate_apprun(app_dir, config):
     copyright_str = f"#   Copyright <{current_year}> <Nitrux Latinoamericana S.C. <hello@nxos.org>>"
     copyright_line = copyright_str.ljust(172) + "#"
 
+
+    # -- Verify the content of the sandbox section.
+
+    sandbox = config.get("sandbox", {})
+
+    # -- Use get_sandbox_exec_block to generate the sandbox execution block.
+
+    sandbox_exec_block = get_sandbox_exec_block(config, exec_cmd)
+
+    # -- Verify that the sandbox_exec_block is correctly generated.
+
+    sandbox_exec_block = get_sandbox_exec_block(config.get("sandbox", {}), exec_cmd)
+
     apprun_script = f"""#!/usr/bin/env bash
 
 #############################################################################################################################################################################
@@ -321,7 +335,7 @@ export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
 
 # -- Run the application.
 
-exec "$APPDIR{exec_cmd}" "$@"
+{sandbox_exec_block}
 """
 
     with open(apprun_path, "w") as f:
@@ -418,7 +432,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     if not binary_path:
         print(f"❌ Error: No binary path specified for {app_name}. Aborting.")
-        return
+        sys.exit(1)
 
 
     # -- Ensure AppDir is properly set up before running any commands.
@@ -426,8 +440,10 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
     if not extracted_binary_path.exists():
-        print(f"❌ Error: Binary {extracted_binary_path} not found! AppImage might fail.")
-        return
+        print(f"❌ Error: Binary {extracted_binary_path} not found! AppImage might fail.\n")
+        cleanup_cache(app_name)
+        print()
+        sys.exit(1)
 
     # -- Run prebuild commands inside the AppDir.
 

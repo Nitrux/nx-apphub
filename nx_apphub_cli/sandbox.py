@@ -23,85 +23,88 @@
 #############################################################################################################################################################################
 
 import os
-import subprocess
-import argparse
-from pathlib import Path
-import gzip
-import urllib.request
-
-def detect_appdir(path):
-    """Normalize path and auto-detect if it's a squashfs-root."""
-    path = Path(path).expanduser().resolve()
-    if path.name == "squashfs-root":
-        return path
-    if (path / "squashfs-root").is_dir():
-        return path / "squashfs-root"
-    return path
 
 
-def is_valid_appdir(path):
-    """Check if the path is a plausible AppDir or squashfs-root."""
-    return path.is_dir() and path.name == "squashfs-root" and (path / "AppRun").is_file()
+# -- Bubblewrap flag mappings --
+
+bwrap_boolean_flags = {
+    "ro-root": "--ro-bind / /",
+    "dev": "--dev /dev",
+    "proc": "--proc /proc",
+    "tmpfs": "--tmpfs /tmp",
+    "mqueue": "--mqueue /dev/mqueue",
+    "ro-home": "--ro-bind $HOME $HOME",
+    "no-net": "--unshare-net",
+    "no-ipc": "--unshare-ipc",
+    "no-pid": "--unshare-pid",
+    "unshare-uts": "--unshare-uts",
+    "unshare-cgroup": "--unshare-cgroup",
+    "new-session": "--new-session",
+    "unshare-user": "--unshare-user",
+    "cap-drop-all": "--cap-drop-all",
+    "die-with-parent": "--die-with-parent",
+    "clearenv": "--clearenv"
+}
+
+bwrap_list_flags = {
+    "env": lambda k, v: ["--setenv"] + v.split("=", 1) if "=" in v else [],
+    "unset-env": lambda k, v: ["--unsetenv", v],
+    "cap-drop": lambda k, v: ["--cap-drop", v],
+    "bind": lambda k, v: ["--bind"] + v.split(":", 1),
+    "ro-bind": lambda k, v: ["--ro-bind"] + v.split(":", 1),
+    "bind-try": lambda k, v: ["--bind-try"] + v.split(":", 1),
+    "ro-bind-try": lambda k, v: ["--ro-bind-try"] + v.split(":", 1),
+    "remount-ro": lambda k, v: ["--remount-ro", v]
+}
+
+bwrap_key_value_flags = {
+    "hostname": "--hostname",
+    "chdir": "--chdir",
+    "file-label": "--file-label",
+    "exec-label": "--exec-label",
+    "seccomp": "--seccomp"
+}
 
 
-def is_elf(path):
-    """Return True if the file is an ELF binary."""
+def get_known_apparmor_profiles():
+    profile_dir = "/etc/apparmor.d/"
     try:
-        with open(path, "rb") as f:
-            return f.read(4) == b"\x7fELF"
-    except Exception:
-        return False
+        return {f for f in os.listdir(profile_dir) if not f.startswith(".")}
+    except FileNotFoundError:
+        return set()
 
 
-def library_exists_in_appdir(libname, appdir):
-    for root, dirs, files in os.walk(appdir):
-        for file in files:
-            if file == libname or file.startswith(libname + "."):
-                return True
-    return False
+def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
+    """Return the appropriate sandbox execution line."""
+    sandbox_type = sandbox.get("type", "none")
 
+    if sandbox_type == "firejail":
+        profile = sandbox.get("aa_profile", "none")
+        if profile != "none":
+            return f'exec /usr/bin/firejail --apparmor="{profile}" "$APPDIR{exec_cmd}" "$@"'
+        else:
+            return f'exec /usr/bin/firejail "$APPDIR{exec_cmd}" "$@"'
 
-def find_missing_libs(appdir):
-    """Scan the AppDir for executables or shared objects with missing libraries."""
-    missing = {}
-    for root, dirs, files in os.walk(appdir):
-        for file in files:
-            full_path = Path(root) / file
-            if not is_elf(full_path):
-                continue
-            try:
-                result = subprocess.check_output(['ldd', str(full_path)], stderr=subprocess.DEVNULL, text=True)
-            except subprocess.CalledProcessError:
-                continue
-            for line in result.splitlines():
-                if '=> not found' in line:
-                    lib = line.split('=>')[0].strip()
-                    if library_exists_in_appdir(lib, appdir):
-                        continue
-                    missing.setdefault(lib, []).append(str(full_path))
-    return missing
+    elif sandbox_type == "bwrap":
+        bwrap_args = ["bwrap"]
 
-def run_linter(args=None):
-    if args is None:
-        parser = argparse.ArgumentParser(description="Check missing shared libraries in an AppDir.")
-        parser.add_argument("appdir", type=str, help="Path to the AppDir or squashfs-root directory")
-        args = parser.parse_args()
+        for key, flag in bwrap_boolean_flags.items():
+            if sandbox.get(key):
+                bwrap_args += flag.split()
 
-    appdir_path = detect_appdir(args.appdir)
-    if not is_valid_appdir(appdir_path):
-        print(f"❌ Invalid or incomplete AppDir: {appdir_path}")
-        return
+        for key, transform in bwrap_list_flags.items():
+            if key in sandbox:
+                for item in sandbox[key]:
+                    bwrap_args += transform(key, item)
 
-    print(f"\n🔍 Scanning AppDir: {appdir_path}\n")
-    missing = find_missing_libs(appdir_path)
+        for key, flag in bwrap_key_value_flags.items():
+            if key in sandbox:
+                bwrap_args += [flag, str(sandbox[key])]
 
-    if not missing:
-        print("✅ No missing shared libraries found.\n")
-        return
+        bwrap_args.append(f"$APPDIR{exec_cmd}")
+        bwrap_args.append("\"$@\"")
+        return f'exec {" ".join(bwrap_args)}'
 
-    print("❌ Missing shared libraries:\n")
-    for lib, sources in sorted(missing.items()):
-        print(f"{lib} — required by:")
-        for src in sorted(set(sources)):
-            print(f"  ↪ {src}")
-        print()
+    # -- Default: no sandbox.
+
+    return f'exec "$APPDIR{exec_cmd}" "$@"'

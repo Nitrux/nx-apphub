@@ -149,6 +149,8 @@ def generate_yaml(package_name, distro, release, arch, components):
     depends = fields.get("Depends", "")
     deps = parse_dependencies(depends)
 
+    deps.append(package_name)
+
     distro_entry = {
         "distro": distro,
         "release": release,
@@ -172,6 +174,9 @@ def generate_yaml(package_name, distro, release, arch, components):
             "setlibpath": "/usr/lib",
             "envvars": {},
             "prebuild_commands": []
+        },
+        "sandbox": {
+            "type": "none",
         }
     }
     return yaml_data, fields

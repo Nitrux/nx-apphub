@@ -29,6 +29,8 @@ from pathlib import Path
 
 import yaml
 
+from .sandbox import get_known_apparmor_profiles, bwrap_boolean_flags, bwrap_list_flags, bwrap_key_value_flags
+
 
 # -- Base cache directory.
 
@@ -99,5 +101,37 @@ def validate_yaml_config(config):
             if not isinstance(value, expected_type):
                 print(f"❌ Error: Invalid type for '{section}.{key}'. Expected {expected_type.__name__}, got {type(value).__name__}.\n")
                 sys.exit(1)
+    
+    sandbox = config.get("sandbox", {})
+    if not isinstance(sandbox, dict):
+        raise ValueError("sandbox must be a dictionary")
+
+    sandbox_type = sandbox.get("type", "none")
+    if sandbox_type not in ("bwrap", "firejail", "none"):
+        raise ValueError("sandbox.type must be one of: bwrap, firejail, none")
+
+    for key in bwrap_boolean_flags:
+        if key in sandbox and not isinstance(sandbox[key], bool):
+            raise ValueError(f"sandbox.{key} must be a boolean")
+
+    for key in bwrap_list_flags:
+        if key in sandbox and not isinstance(sandbox[key], list):
+            raise ValueError(f"sandbox.{key} must be a list")
+
+    for key in bwrap_key_value_flags:
+        if key in sandbox and not isinstance(sandbox[key], (str, int)):
+            raise ValueError(f"sandbox.{key} must be a string or integer")
+
+    if sandbox_type == "firejail":
+        if "aa_profile" in sandbox:
+            if not isinstance(sandbox["aa_profile"], str):
+                raise ValueError("sandbox.aa_profile must be a string")
+            
+            profile = sandbox["aa_profile"]
+            if profile != "none":
+                known_profiles = get_known_apparmor_profiles()
+                if profile not in known_profiles:
+                    print(f"⚠️ Warning: aa_profile '{profile}' does not match any profile in /etc/apparmor.d/")
+                    print("\n   👉 To fix this, create or rename the profile file or set 'aa_profile: none'.\n")
 
     print("✅ YAML validation passed successfully.\n")
