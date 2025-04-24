@@ -31,6 +31,8 @@ import yaml
 from shutil import get_terminal_size
 from tqdm import tqdm
 from pathlib import Path
+from datetime import datetime
+from io import StringIO
 
 from .builder import prepare_appimage, setup_appimage_directories
 from .config import load_yaml_config, validate_yaml_config
@@ -248,8 +250,26 @@ def main():
                 args.components
             )
             if yaml_data:
+                current_year = datetime.now().year
+                header_lines = [
+                    f"# YAML build file",
+                    f"# nx-apphub-cli {current_year} (c) Nitrux Latinoamericana S.C.",
+                    ""
+                ]
+
                 with open(args.output, "w") as f:
-                    yaml.dump(yaml_data, f, sort_keys=False, allow_unicode=True, default_flow_style=False)
+                    
+                    f.write("\n".join(header_lines) + "\n")
+
+                    yaml_buffer = StringIO()
+                    yaml.dump(yaml_data, yaml_buffer, sort_keys=False, allow_unicode=True, default_flow_style=False)
+                    yaml_str = yaml_buffer.getvalue()
+
+                    yaml_str = yaml_str.replace("\napprunconf:", "\n\napprunconf:")
+                    yaml_str = yaml_str.replace("\nsandbox:", "\n\nsandbox:")
+
+                    f.write(yaml_str)
+
                 print(f"\n✅ YAML template written to: {args.output}\n")
 
                 if args.description_output and fields:
