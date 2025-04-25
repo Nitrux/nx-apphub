@@ -90,6 +90,9 @@ def main():
         subparser_generate.add_argument("--components", nargs="*", default=["main"], help="APT components (default: main)")
         subparser_generate.add_argument("--output", default="app.yml", help="Output YAML file")
         subparser_generate.add_argument("--description-output", help="Output application metadata file")
+        app_type_group = subparser_generate.add_mutually_exclusive_group()
+        app_type_group.add_argument("--gui-app", action="store_true", help="Mark application as a GUI (default)")
+        app_type_group.add_argument("--cli-app", action="store_true", help="Mark application as a CLI tool")
 
 
         args = parser.parse_args()
@@ -242,12 +245,17 @@ def main():
                 except Exception as e:
                     print(f"❌ appdir-lint failed: {e}")
         elif args.command == "generate":
+            if args.cli_app:
+                integration_key = "cli"
+            else:
+                integration_key = "gui"
             yaml_data, fields = generate_yaml(
                 args.package,
                 args.distro,
                 args.release,
                 args.arch,
-                args.components
+                args.components,
+                integration_key=integration_key
             )
             if yaml_data:
                 current_year = datetime.now().year
@@ -267,6 +275,7 @@ def main():
 
                     yaml_str = yaml_str.replace("\napprunconf:", "\n\napprunconf:")
                     yaml_str = yaml_str.replace("\nsandbox:", "\n\nsandbox:")
+                    yaml_str = yaml_str.replace("\nintegration:", "\n\nintegration:")
 
                     f.write(yaml_str)
 

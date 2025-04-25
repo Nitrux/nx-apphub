@@ -125,7 +125,7 @@ def copy_system_icon(app_name, app_dir, icon_path, quiet=True):
         raise FileNotFoundError(f"❌ Error: No system icon found for '{icon_name}'.")
 
 
-def fix_desktop_entry(app_name, app_dir, binary_path):
+def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False):
     """Ensure the AppImage contains a valid .desktop file."""
 
     desktop_dir = app_dir / "usr/share/applications"
@@ -144,19 +144,20 @@ def fix_desktop_entry(app_name, app_dir, binary_path):
     desktop_file_path = None
 
     # -- Prefer exact match.
+
     exact_match = desktop_dir / f"{app_name}.desktop"
     if exact_match.exists() and is_valid_desktop(exact_match):
         desktop_file_path = exact_match
     else:
 
-        # -- Look for partial matches with app_name in the filename.
+        # -- Look for partial matches.
 
         for file in existing_desktops:
             if app_name in file.name and is_valid_desktop(file):
                 desktop_file_path = file
                 break
 
-        # -- Otherwise, fallback to first valid .desktop file.
+        # -- Fallback to any valid one.
 
         if not desktop_file_path:
             for file in existing_desktops:
@@ -166,18 +167,41 @@ def fix_desktop_entry(app_name, app_dir, binary_path):
 
     if desktop_file_path:
 
-        # -- Copy to top-level AppDir/ if needed.
+        # -- Copy to top-level AppDir.
 
         target_path = app_dir / desktop_file_path.name
         if desktop_file_path != target_path:
             shutil.copy(desktop_file_path, target_path)
-            desktop_file_path = target_path
-
         desktop_file_path = target_path
+
+        # -- Patch Exec if necessary.
+
+        lines = desktop_file_path.read_text().splitlines()
+        updated_lines = []
+        patched_exec = False
+        found_nodisplay = False
+
+        for line in lines:
+            if line.startswith("Exec="):
+                if f"/usr/bin/{binary_path.name}" not in line:
+                    updated_lines.append(f"Exec=/usr/bin/{binary_path.name}")
+                    patched_exec = True
+                else:
+                    updated_lines.append(line)
+            elif line.startswith("NoDisplay="):
+                found_nodisplay = True
+                updated_lines.append(line)
+            else:
+                updated_lines.append(line)
+
+        if hide_from_menu and not found_nodisplay:
+            updated_lines.append("NoDisplay=true")
+
+        desktop_file_path.write_text("\n".join(updated_lines) + "\n")
 
     else:
 
-        # -- Generate a minimal .desktop file.
+        # -- Generate new minimal .desktop.
 
         desktop_file_path = app_dir / f"{app_name}.desktop"
         desktop_content = f"""[Desktop Entry]
@@ -187,24 +211,9 @@ Exec=/usr/bin/{binary_path.name}
 Terminal=true
 Categories=Utility;
 Icon={app_name}
+{'NoDisplay=true' if hide_from_menu else ''}
 """
-        with open(desktop_file_path, "w") as f:
-            f.write(desktop_content)
-
-    # -- Patch Exec line if necessary.
-
-    with open(desktop_file_path, "r") as f:
-        lines = f.readlines()
-
-    updated_lines = []
-    for line in lines:
-        if line.startswith("Exec=") and f"/usr/bin/{binary_path.name}" not in line:
-            updated_lines.append(f"Exec=/usr/bin/{binary_path.name}\n")
-        else:
-            updated_lines.append(line)
-
-    with open(desktop_file_path, "w") as f:
-        f.writelines(updated_lines)
+        desktop_file_path.write_text(desktop_content.strip() + "\n")
 
 
 def patch_binary_rpath(binary_path, config):
@@ -345,7 +354,12 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     print(f"📌 Setting up AppRun and metadata for: {app_name}...")
     print()
     generate_apprun(app_dir, config)
-    fix_desktop_entry(app_name, app_dir, new_binary_path)
+
+    integration = config.get("integration", {})
+    hide_from_menu = integration.get("cli_app", False)
+
+    fix_desktop_entry(app_name, app_dir, new_binary_path, hide_from_menu=hide_from_menu)
+
     copy_system_icon(app_name, app_dir, config["buildinfo"].get("iconpath", None))
 
     # -- Determine the final AppImage location.

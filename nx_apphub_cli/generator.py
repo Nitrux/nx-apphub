@@ -133,7 +133,7 @@ def parse_fields(entry):
     return fields
 
 
-def generate_yaml(package_name, distro, release, arch, components):
+def generate_yaml(package_name, distro, release, arch, components, integration_key="gui_app"):
     metadata = fetch_packages_metadata(distro, release, arch, components)
     if not metadata:
         return None, None
@@ -176,7 +176,10 @@ def generate_yaml(package_name, distro, release, arch, components):
             "prebuild_commands": []
         },
         "sandbox": {
-            "type": "none",
+            "type": "none"
+        },
+        "integration": {
+            f"{integration_key}_app": True
         }
     }
     return yaml_data, fields

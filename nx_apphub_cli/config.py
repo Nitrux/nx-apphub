@@ -179,4 +179,25 @@ def validate_yaml_config(config):
             print(f"❌ Error: Unknown key 'sandbox.{key}' in YAML.\n")
             sys.exit(1)
 
+    integration = config.get("integration", {})
+    if not isinstance(integration, dict):
+        print("❌ Error: 'integration' must be a dictionary.\n")
+        sys.exit(1)
+
+    allowed_keys = {"gui_app", "cli_app"}
+    actual_keys = set(integration.keys())
+
+    if not actual_keys:
+        print("❌ Error: 'integration' must contain one key: either 'gui_app' or 'cli_app'.\n")
+        sys.exit(1)
+
+    if len(actual_keys) > 1 or not actual_keys.issubset(allowed_keys):
+        print("❌ Error: 'integration' must only contain one of: 'gui_app' or 'cli_app'.\n")
+        sys.exit(1)
+
+    only_key = next(iter(actual_keys))
+    if not isinstance(integration[only_key], bool):
+        print(f"❌ Error: 'integration.{only_key}' must be a boolean.\n")
+        sys.exit(1)
+
     print("✅ YAML validation passed successfully.\n")
