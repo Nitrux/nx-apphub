@@ -200,9 +200,9 @@ def validate_yaml_config(config):
         print(f"❌ Error: 'integration.{only_key}' must be a boolean.\n")
         sys.exit(1)
     
-    runtime = config.get("apprunconf", {}).get("runtime", "classic")
-    if runtime not in ("classic", "go"):
-        print("❌ Error: 'apprunconf.runtime' must be either 'classic' or 'go'.\n")
+    runtime = config["buildinfo"].get("runtime", "classic")
+    if not isinstance(runtime, str) or runtime not in ("classic", "go"):
+        print("❌ Error: 'buildinfo.runtime' must be either 'classic' or 'go'.\n")
         sys.exit(1)
 
     print("✅ YAML validation passed successfully.\n")
