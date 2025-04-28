@@ -26,6 +26,7 @@ import os
 import platform
 import shutil
 from pathlib import Path
+import re
 
 import requests
 
@@ -35,6 +36,7 @@ import requests
 app_base_dir = Path.home() / ".cache/nx-apphub-cli"
 local_bin = Path.home() / ".local/bin"
 appimagetool_path = local_bin / "appimagetool"
+go_appimagetool_path = local_bin / "go-appimagetool"
 
 
 # -- Utility functions.
@@ -93,11 +95,58 @@ def get_appimagetool(quiet=True):
 
             appimagetool_path.chmod(0o755)
             if not quiet:
-                print(f"appimagetool downloaded and saved to {appimagetool_path}")
+                print(f"✅  appimagetool downloaded and saved to {appimagetool_path}")
 
         except requests.RequestException as e:
-            print(f"Error downloading appimagetool: {e}")
+            print(f"❌ Error downloading appimagetool: {e}")
+            print()
             exit(1)
+        
+    return appimagetool_path
+
+
+def get_go_appimagetool(quiet=True):
+    """Ensure go-appimagetool is available by downloading it if missing."""
+    if not go_appimagetool_path.exists():
+        if not quiet:
+            print("go-appimagetool not found! Downloading from GitHub...")
+        local_bin.mkdir(parents=True, exist_ok=True)
+
+        arch = get_architecture()
+
+        latest_url = "https://github.com/probonopd/go-appimage/releases/expanded_assets/continuous"
+        try:
+            response = requests.get(latest_url, timeout=20)
+            response.raise_for_status()
+
+            pattern = rf'href="([^"]*appimagetool-.*-{arch}\.AppImage)"'
+            match = re.search(pattern, response.text)
+
+            if match:
+                download_url = f"https://github.com{match.group(1)}"
+                response = requests.get(download_url, stream=True, timeout=20)
+                response.raise_for_status()
+
+                with open(go_appimagetool_path, "wb") as tool_file:
+                    for chunk in response.iter_content(1024):
+                        tool_file.write(chunk)
+
+                go_appimagetool_path.chmod(0o755)
+                if not quiet:
+                    print(f"✅  go-appimagetool downloaded and saved to {go_appimagetool_path}")
+
+            else:
+                print(f"❌ Error: Could not find a matching go-appimagetool build for architecture: {arch}")
+                print()
+                exit(1)
+
+        except requests.RequestException as e:
+            print(f"❌ Error downloading Go-based appimagetool: {e}")
+            print()
+            exit(1)
+
+    return go_appimagetool_path
+
 
 def infer_lint_metadata_from_yaml(yaml_path):
     from pathlib import Path

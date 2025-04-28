@@ -249,6 +249,9 @@ def main():
                 integration_key = "cli"
             else:
                 integration_key = "gui"
+
+            runtime = "classic"
+
             yaml_data, fields = generate_yaml(
                 args.package,
                 args.distro,

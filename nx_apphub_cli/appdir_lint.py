@@ -29,6 +29,7 @@ from pathlib import Path
 import gzip
 import urllib.request
 
+
 def detect_appdir(path):
     """Normalize path and auto-detect if it's a squashfs-root."""
     path = Path(path).expanduser().resolve()

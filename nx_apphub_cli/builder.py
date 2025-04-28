@@ -30,7 +30,7 @@ import subprocess
 from pathlib import Path
 
 from .config import get_apprunconf_value
-from .utils import cleanup_cache, get_appimagetool, get_architecture
+from .utils import cleanup_cache, get_appimagetool, get_go_appimagetool, get_architecture
 from .apprun import generate_apprun
 
 
@@ -269,25 +269,37 @@ def patch_binary_rpath(binary_path, config):
         print(f"❌ Error: Failed to patch RPATH for {binary_path}: {e}")
 
 
-def package_appdir(app_name, app_dir, output_file, quiet=True):
-    """Run appimagetool to make an AppDir into an AppImage."""
+def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, quiet=True):
+    """Run appimagetool (classic or Go version) to make an AppDir into an AppImage or AppBox."""
+
     if not quiet:
         print(f"\n🛠  Building AppImage: {output_file} ...")
 
     try:
         with open(os.devnull, 'w') as devnull:
-            subprocess.run(
-                [str(appimagetool_path), str(app_dir), str(output_file)],
-                check=True,
-                stdout=None if not quiet else devnull,
-                stderr=None if not quiet else devnull
-            )
+            if runtime == "go":
+                env = os.environ.copy()
+                env["VERSION"] = output_file.stem.split("-")[1]
+
+                subprocess.run(
+                    [str(appimagetool_binary), str(app_dir)],
+                    check=True,
+                    env=env,
+                    stdout=None if not quiet else devnull,
+                    stderr=None if not quiet else devnull
+                )
+            else:
+                subprocess.run(
+                    [str(appimagetool_binary), str(app_dir), str(output_file)],
+                    check=True,
+                    stdout=None if not quiet else devnull,
+                    stderr=None if not quiet else devnull
+                )
 
         if not quiet:
             print(f"✅ AppImage built successfully: {output_file}")
 
         # -- Clean cache after successful build.
-
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
@@ -298,7 +310,7 @@ def package_appdir(app_name, app_dir, output_file, quiet=True):
 
 def prepare_appimage(config, install_mode=False, quiet=True):
     """Prepare and build an AppImage with the version in the filename."""
-    
+
     app_name = config["buildinfo"]["name"]
     version = config["buildinfo"].get("version", "unknown")
     binary_path = config["buildinfo"].get("binarypath")
@@ -337,7 +349,18 @@ def prepare_appimage(config, install_mode=False, quiet=True):
                 cleanup_cache(app_name)
                 return
 
-    get_appimagetool()
+    # -- Select appimagetool based on runtime.
+
+    runtime = config.get("buildinfo", {}).get("runtime", "classic")
+
+    if runtime == "classic":
+        appimagetool_binary = get_appimagetool(quiet=quiet)
+    elif runtime == "go":
+        appimagetool_binary = get_go_appimagetool(quiet=quiet)
+    else:
+        print(f"❌ Error: Unknown runtime '{runtime}' specified in buildinfo.")
+        cleanup_cache(app_name)
+        sys.exit(1)
 
     # -- Move binary to correct location BEFORE generating AppRun.
 
@@ -378,7 +401,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     # -- Build the final AppImage.
 
-    package_appdir(app_name, app_dir, output_file, quiet)
+    package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, quiet)
 
     if not quiet:
         print(f"📦 AppImage ready: {output_file}\n")

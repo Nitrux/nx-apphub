@@ -133,7 +133,7 @@ def parse_fields(entry):
     return fields
 
 
-def generate_yaml(package_name, distro, release, arch, components, integration_key="gui_app"):
+def generate_yaml(package_name, distro, release, arch, components, integration_key="gui_app", runtime="classic"):
     metadata = fetch_packages_metadata(distro, release, arch, components)
     if not metadata:
         return None, None
@@ -166,7 +166,8 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
             "distrorepo": {
                 "base": [distro_entry]
             },
-            "deps": deps
+            "deps": deps,
+            "runtime": runtime
         },
         "apprunconf": {
             "exec": "/usr/bin/REPLACE-ME",
