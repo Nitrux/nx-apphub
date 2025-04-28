@@ -269,37 +269,51 @@ def patch_binary_rpath(binary_path, config):
         print(f"❌ Error: Failed to patch RPATH for {binary_path}: {e}")
 
 
-def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, quiet=True):
-    """Run appimagetool (classic or Go version) to make an AppDir into an AppImage or AppBox."""
-
+def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, config, quiet=True):
+    """Run appimagetool to make an AppDir into an AppImage."""
     if not quiet:
         print(f"\n🛠  Building AppImage: {output_file} ...")
 
     try:
-        with open(os.devnull, 'w') as devnull:
-            if runtime == "go":
-                env = os.environ.copy()
-                env["VERSION"] = output_file.stem.split("-")[1]
+        env = os.environ.copy()
 
-                subprocess.run(
-                    [str(appimagetool_binary), str(app_dir)],
-                    check=True,
-                    env=env,
-                    stdout=None if not quiet else devnull,
-                    stderr=None if not quiet else devnull
-                )
-            else:
-                subprocess.run(
-                    [str(appimagetool_binary), str(app_dir), str(output_file)],
-                    check=True,
-                    stdout=None if not quiet else devnull,
-                    stderr=None if not quiet else devnull
-                )
+        cmd = []
+
+        if runtime == "go":
+
+            # -- Go appimagetool expects only the AppDir, no output file.
+            # -- The environment variable VERSION is the version of the AppImage.
+
+            env["VERSION"] = config["buildinfo"]["version"]
+            cmd = [str(appimagetool_binary), str(app_dir)]
+        else:
+            
+            # -- Classic appimagetool expects AppDir and output file.
+
+            cmd = [str(appimagetool_binary), str(app_dir), str(output_file)]
+
+        with open(os.devnull, 'w') as devnull:
+            subprocess.run(
+                cmd,
+                check=True,
+                stdout=None if not quiet else devnull,
+                stderr=None if not quiet else devnull,
+                env=env
+            )
 
         if not quiet:
-            print(f"✅ AppImage built successfully: {output_file}")
+            print(f"✅ AppImage built successfully!")
 
-        # -- Clean cache after successful build.
+        # -- Move the output manually if using Go runtime.
+
+        if runtime == "go":
+            if output_file.exists():
+                if not quiet:
+                    print(f"✅ AppImage built successfully: {output_file}")
+            else:
+                print("❌ Error: Expected AppImage not found after Go appimagetool build.\n")
+                sys.exit(1)
+
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
@@ -316,7 +330,9 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     binary_path = config["buildinfo"].get("binarypath")
 
     if not binary_path:
-        print(f"❌ Error: No binary path specified for {app_name}. Aborting.")
+        print(f"❌ Error: No binary path specified for {app_name}. Aborting.\n")
+        cleanup_cache(app_name)
+        print()
         sys.exit(1)
 
 
@@ -401,7 +417,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     # -- Build the final AppImage.
 
-    package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, quiet)
+    package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, config, quiet)
 
     if not quiet:
         print(f"📦 AppImage ready: {output_file}\n")
