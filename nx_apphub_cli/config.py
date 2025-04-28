@@ -91,6 +91,8 @@ def validate_yaml_config(config):
         }
     }
 
+    # -- Validate required sections and keys.
+
     for section, keys in required_sections.items():
         if section not in config:
             print(f"❌ Error: Missing required section '{section}' in YAML.\n")
@@ -101,10 +103,11 @@ def validate_yaml_config(config):
             if value is None:
                 print(f"❌ Error: Missing required key '{key}' in section '{section}' of YAML.\n")
                 sys.exit(1)
-
             if not isinstance(value, expected_type):
                 print(f"❌ Error: Invalid type for '{section}.{key}'. Expected {expected_type.__name__}, got {type(value).__name__}.\n")
                 sys.exit(1)
+
+    # -- Validate sandbox section.
 
     sandbox = config.get("sandbox", {})
     if not isinstance(sandbox, dict):
@@ -112,19 +115,18 @@ def validate_yaml_config(config):
         sys.exit(1)
 
     sandbox_type = sandbox.get("type", "none")
-
     if sandbox_type not in ("bwrap", "firejail", "none"):
         print("❌ Error: 'sandbox.type' must be one of: bwrap, firejail, none.\n")
         sys.exit(1)
 
-    allowed_keys = {"type"}
+    def validate_firejail(sandbox):
+        required = {"name"}
+        optional = {"aa_profile"}
 
-    if sandbox_type == "firejail":
-        allowed_keys.update({"name", "aa_profile"})
-
-        if "name" not in sandbox:
-            print("❌ Error: Missing required 'name' key in the 'sandbox' section for Firejail.\n")
-            sys.exit(1)
+        for key in required:
+            if key not in sandbox:
+                print(f"❌ Error: Missing required 'sandbox.{key}' key for Firejail.\n")
+                sys.exit(1)
 
         if "aa_profile" in sandbox:
             if not isinstance(sandbox["aa_profile"], str):
@@ -138,10 +140,18 @@ def validate_yaml_config(config):
                     print(f"⚠️ Warning: aa_profile '{profile}' does not match any profile in /etc/apparmor.d/")
                     print("\n   👉 To fix this, create or rename the profile file or set 'aa_profile: none'.\n")
 
-    if sandbox_type == "bwrap":
-        allowed_keys.update(bwrap_boolean_flags.keys())
-        allowed_keys.update(bwrap_list_flags.keys())
-        allowed_keys.update(bwrap_key_value_flags.keys())
+        for key in sandbox.keys():
+            if key not in ({"type"} | required | optional):
+                print(f"❌ Error: Unknown key 'sandbox.{key}' for Firejail.\n")
+                sys.exit(1)
+
+    def validate_bwrap(sandbox):
+        allowed_keys = {"type"} | bwrap_boolean_flags.keys() | bwrap_list_flags.keys() | bwrap_key_value_flags.keys()
+
+        for key in sandbox.keys():
+            if key not in allowed_keys:
+                print(f"❌ Error: Unknown key 'sandbox.{key}' in Bwrap config.\n")
+                sys.exit(1)
 
         for key in bwrap_boolean_flags:
             if key in sandbox and not isinstance(sandbox[key], bool):
@@ -155,18 +165,18 @@ def validate_yaml_config(config):
                     sys.exit(1)
 
                 if key == "bwrap_env":
-                    for item in sandbox["bwrap_env"]:
+                    for item in sandbox[key]:
                         if not isinstance(item, dict) or len(item) != 1:
                             print("❌ Error: Each item in 'sandbox.bwrap_env' must be a dictionary with a single key-value pair.\n")
                             sys.exit(1)
                         for k, v in item.items():
                             if not isinstance(k, str) or not isinstance(v, str):
-                                print("❌ Error: Environment variable keys and values in 'sandbox.bwrap_env' must be strings.\n")
+                                print("❌ Error: 'sandbox.bwrap_env' entries must have string key-value pairs.\n")
                                 sys.exit(1)
 
                 elif key == "bwrap_unset-env":
-                    if not all(isinstance(v, str) for v in sandbox["bwrap_unset-env"]):
-                        print("❌ Error: All entries in 'sandbox.bwrap_unset-env' must be strings.\n")
+                    if not all(isinstance(v, str) for v in sandbox[key]):
+                        print("❌ Error: 'sandbox.bwrap_unset-env' entries must be strings.\n")
                         sys.exit(1)
 
         for key in bwrap_key_value_flags:
@@ -174,24 +184,26 @@ def validate_yaml_config(config):
                 print(f"❌ Error: 'sandbox.{key}' must be a string or integer.\n")
                 sys.exit(1)
 
-    for key in sandbox:
-        if key not in allowed_keys:
-            print(f"❌ Error: Unknown key 'sandbox.{key}' in YAML.\n")
-            sys.exit(1)
+    if sandbox_type == "firejail":
+        validate_firejail(sandbox)
+    elif sandbox_type == "bwrap":
+        validate_bwrap(sandbox)
+
+    # -- Validate integration section.
 
     integration = config.get("integration", {})
     if not isinstance(integration, dict):
         print("❌ Error: 'integration' must be a dictionary.\n")
         sys.exit(1)
 
-    allowed_keys = {"gui_app", "cli_app"}
+    valid_keys = {"gui_app", "cli_app"}
     actual_keys = set(integration.keys())
 
     if not actual_keys:
         print("❌ Error: 'integration' must contain one key: either 'gui_app' or 'cli_app'.\n")
         sys.exit(1)
 
-    if len(actual_keys) > 1 or not actual_keys.issubset(allowed_keys):
+    if len(actual_keys) > 1 or not actual_keys.issubset(valid_keys):
         print("❌ Error: 'integration' must only contain one of: 'gui_app' or 'cli_app'.\n")
         sys.exit(1)
 
@@ -199,10 +211,14 @@ def validate_yaml_config(config):
     if not isinstance(integration[only_key], bool):
         print(f"❌ Error: 'integration.{only_key}' must be a boolean.\n")
         sys.exit(1)
-    
+
+    # -- Validate runtime.
+
+    allowed_runtimes = {"classic", "go", "uruntime"}
     runtime = config["buildinfo"].get("runtime", "classic")
-    if not isinstance(runtime, str) or runtime not in ("classic", "go"):
-        print("❌ Error: 'buildinfo.runtime' must be either 'classic' or 'go'.\n")
+
+    if not isinstance(runtime, str) or runtime not in allowed_runtimes:
+        print(f"❌ Error: 'buildinfo.runtime' must be one of: {', '.join(sorted(allowed_runtimes))}.\n")
         sys.exit(1)
 
     print("✅ YAML validation passed successfully.\n")

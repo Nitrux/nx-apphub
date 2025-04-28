@@ -37,6 +37,7 @@ app_base_dir = Path.home() / ".cache/nx-apphub-cli"
 local_bin = Path.home() / ".local/bin"
 appimagetool_path = local_bin / "appimagetool"
 go_appimagetool_path = local_bin / "go-appimagetool"
+uruntime_path = local_bin / "uruntime"
 
 
 # -- Utility functions.
@@ -105,7 +106,7 @@ def get_appimagetool(quiet=True):
     return appimagetool_path
 
 
-def get_go_appimagetool(quiet=True):
+def get_go_appimagetool(quiet=False):
     """Ensure go-appimagetool is available by downloading it if missing."""
     if not go_appimagetool_path.exists():
         if not quiet:
@@ -146,6 +147,40 @@ def get_go_appimagetool(quiet=True):
             exit(1)
 
     return go_appimagetool_path
+
+
+def get_uruntime(quiet=False):
+    """Ensure uruntime is available by downloading it if missing."""
+
+    if not uruntime_path.exists():
+        if not quiet:
+            print("❌ Error: uruntime not found! Downloading from GitHub...")
+
+        local_bin.mkdir(parents=True, exist_ok=True)
+
+        arch = get_architecture()
+        uruntime_filename = f"uruntime-appimage-dwarfs-{arch}"
+
+        tool_url = f"https://github.com/VHSgunzo/uruntime/releases/latest/download/{uruntime_filename}"
+
+        try:
+            response = requests.get(tool_url, stream=True, timeout=20)
+            response.raise_for_status()
+
+            with open(uruntime_path, "wb") as f:
+                for chunk in response.iter_content(1024):
+                    f.write(chunk)
+
+            uruntime_path.chmod(0o755)
+            if not quiet:
+                print(f"✅  uruntime downloaded and saved to {uruntime_path}")
+
+        except requests.RequestException as e:
+            print(f"❌ Error downloading uruntime: {e}")
+            print()
+            sys.exit(1)
+
+    return uruntime_path
 
 
 def infer_lint_metadata_from_yaml(yaml_path):

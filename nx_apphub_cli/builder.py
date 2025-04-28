@@ -30,7 +30,7 @@ import subprocess
 from pathlib import Path
 
 from .config import get_apprunconf_value
-from .utils import cleanup_cache, get_appimagetool, get_go_appimagetool, get_architecture
+from .utils import cleanup_cache, get_appimagetool, get_go_appimagetool, get_uruntime, get_architecture
 from .apprun import generate_apprun
 
 
@@ -335,7 +335,6 @@ def prepare_appimage(config, install_mode=False, quiet=True):
         print()
         sys.exit(1)
 
-
     # -- Ensure AppDir is properly set up before running any commands.
 
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
@@ -365,7 +364,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
                 cleanup_cache(app_name)
                 return
 
-    # -- Select appimagetool based on runtime.
+    # -- Select AppImage runtime tool based on runtime.
 
     runtime = config.get("buildinfo", {}).get("runtime", "classic")
 
@@ -373,8 +372,10 @@ def prepare_appimage(config, install_mode=False, quiet=True):
         appimagetool_binary = get_appimagetool(quiet=quiet)
     elif runtime == "go":
         appimagetool_binary = get_go_appimagetool(quiet=quiet)
+    elif runtime == "uruntime":
+        appimagetool_binary = get_uruntime(quiet=quiet)
     else:
-        print(f"❌ Error: Unknown runtime '{runtime}' specified in buildinfo.")
+        print(f"❌ Error: Unknown runtime '{runtime}' specified in buildinfo.\n")
         cleanup_cache(app_name)
         sys.exit(1)
 
