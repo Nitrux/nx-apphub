@@ -270,7 +270,6 @@ def patch_binary_rpath(binary_path, config):
 
 
 def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, config, quiet=True):
-    """Run appimagetool to make an AppDir into an AppImage."""
     if not quiet:
         print(f"\n🛠  Building AppImage: {output_file} ...")
 
@@ -309,20 +308,34 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
                 env=env
             )
 
-            if output_file.exists():
-                if runtime == "uruntime":
-                    output_file.chmod(0o755)
-                if not quiet:
-                    print(f"✅ AppImage built successfully: {output_file}")
-            else:
-                print(f"❌ Error: Expected AppImage not found: {output_file}\n")
+        if runtime == "go":
+            output_dir = output_file.parent
+            appimages = list(output_dir.glob("*.AppImage"))
+
+            if not appimages:
+                print(f"❌ Error: No AppImage found after Go appimagetool build.\n")
                 sys.exit(1)
+
+            built_appimage = appimages[0]
+            built_appimage.rename(output_file)
+            output_file.chmod(0o755)
+
+        if runtime == "uruntime":
+            output_file.chmod(0o755)
+
+        if not output_file.exists():
+            print(f"❌ Error: Expected AppImage not found: {output_file}\n")
+            sys.exit(1)
+
+        if not quiet:
+            print(f"✅ AppImage built successfully: {output_file}")
 
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
         print(f"❌ Error: AppImage build failed! {e}\n")
         cleanup_cache(app_name)
+        print()
         exit(1)
 
 
@@ -361,7 +374,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
             cmd_resolved = cmd.replace("$APPDIR", str(app_dir))
             try:
                 subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir, stderr=subprocess.PIPE)
-                print(f"    🤖 Command executed: {cmd_resolved}")
+                print(f"\n    🤖 Command executed: {cmd_resolved}\n")
             except subprocess.CalledProcessError as e:
                 print(f"❌ Error: Failed to execute prebuild command '{cmd_resolved}'.\n")
                 print(f"📜 Output:\n{e.stderr.decode()}\n")

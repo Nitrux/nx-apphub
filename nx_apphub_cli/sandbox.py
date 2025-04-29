@@ -101,7 +101,7 @@ caps
     with open(profile_path, "w") as f:
         f.write(profile_content)
 
-    print(f"🔒 Firejail profile saved to: {profile_path}")
+    print(f"🔒 Firejail profile saved to: {profile_path}\n")
     return profile_path
 
 
