@@ -223,12 +223,32 @@ def main():
                         sys.exit(1)
 
                     print(f"📦 Extracting AppImage to squashfs-root/...")
-                    subprocess.run(
-                        [str(appimage_path), "--appimage-extract"],
-                        check=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
-                    )
+
+                    try:
+                        subprocess.run(
+                            [str(appimage_path), "--appimage-extract"],
+                            check=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+                    except PermissionError:
+                        print(f"\n⚠️ Warning: AppImage '{appimage_path.name}' is not executable. Attempting to fix permissions...")
+                        try:
+                            appimage_path.chmod(0o755)
+                            subprocess.run(
+                                [str(appimage_path), "--appimage-extract"],
+                                check=True,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL
+                            )
+                            print("✅ Successfully fixed and extracted AppImage.\n")
+                        except Exception as e:
+                            print(f"❌ Failed to extract AppImage after fixing permissions: {e}\n")
+                            sys.exit(1)
+                    except subprocess.CalledProcessError as e:
+                        print(f"❌ Failed to extract AppImage: {e}\n")
+                        sys.exit(1)
+
                     lint_target = Path("squashfs-root")
 
                 lint_meta = infer_lint_metadata_from_yaml(args.config)
@@ -244,6 +264,7 @@ def main():
                     run_linter(lint_args)
                 except Exception as e:
                     print(f"❌ appdir-lint failed: {e}")
+
         elif args.command == "generate":
             if args.cli_app:
                 integration_key = "cli"

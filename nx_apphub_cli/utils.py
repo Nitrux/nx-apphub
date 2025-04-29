@@ -106,7 +106,7 @@ def get_appimagetool(quiet=True):
     return appimagetool_path
 
 
-def get_go_appimagetool(quiet=False):
+def get_go_appimagetool(quiet=True):
     """Ensure go-appimagetool is available by downloading it if missing."""
     if not go_appimagetool_path.exists():
         if not quiet:
@@ -149,7 +149,7 @@ def get_go_appimagetool(quiet=False):
     return go_appimagetool_path
 
 
-def get_uruntime(quiet=False):
+def get_uruntime(quiet=True):
     """Ensure uruntime is available by downloading it if missing."""
 
     if not uruntime_path.exists():

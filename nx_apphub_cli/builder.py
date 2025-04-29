@@ -276,20 +276,28 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
 
     try:
         env = os.environ.copy()
-
         cmd = []
 
         if runtime == "go":
-
-            # -- Go appimagetool expects only the AppDir, no output file.
-            # -- The environment variable VERSION is the version of the AppImage.
-
             env["VERSION"] = config["buildinfo"]["version"]
             cmd = [str(appimagetool_binary), str(app_dir)]
+        elif runtime == "uruntime":
+            cmd = [
+                str(appimagetool_binary),
+                "--appimage-mkdwarfs",
+                "-f",
+                "--set-owner", "0",
+                "--set-group", "0",
+                "--no-history",
+                "--no-create-timestamp",
+                "--compression", "zstd:level=22",
+                "-S25",
+                "-B8",
+                "--header", str(appimagetool_binary),
+                "-i", str(app_dir),
+                "-o", str(output_file)
+            ]
         else:
-            
-            # -- Classic appimagetool expects AppDir and output file.
-
             cmd = [str(appimagetool_binary), str(app_dir), str(output_file)]
 
         with open(os.devnull, 'w') as devnull:
@@ -301,23 +309,19 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
                 env=env
             )
 
-        if not quiet:
-            print(f"✅ AppImage built successfully!")
-
-        # -- Move the output manually if using Go runtime.
-
-        if runtime == "go":
             if output_file.exists():
+                if runtime == "uruntime":
+                    output_file.chmod(0o755)
                 if not quiet:
                     print(f"✅ AppImage built successfully: {output_file}")
             else:
-                print("❌ Error: Expected AppImage not found after Go appimagetool build.\n")
+                print(f"❌ Error: Expected AppImage not found: {output_file}\n")
                 sys.exit(1)
 
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error: AppImage build failed! {e}")
+        print(f"❌ Error: AppImage build failed! {e}\n")
         cleanup_cache(app_name)
         exit(1)
 

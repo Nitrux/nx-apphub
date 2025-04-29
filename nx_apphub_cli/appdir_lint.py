@@ -82,6 +82,26 @@ def find_missing_libs(appdir):
                     missing.setdefault(lib, []).append(str(full_path))
     return missing
 
+
+def is_valid_appdir(appdir_path):
+    """Validate that the AppDir has a minimal structure."""
+    if not appdir_path.is_dir():
+        return False
+
+    app_run = appdir_path / "AppRun"
+    usr_dir = appdir_path / "usr"
+
+    # -- Minimal expectations: AppRun and usr/ must exist.
+
+    if not app_run.is_file():
+        return False
+
+    if not usr_dir.is_dir():
+        return False
+
+    return True
+
+
 def run_linter(args=None):
     if args is None:
         parser = argparse.ArgumentParser(description="Check missing shared libraries in an AppDir.")
@@ -89,8 +109,16 @@ def run_linter(args=None):
         args = parser.parse_args()
 
     appdir_path = detect_appdir(args.appdir)
+
+    # --- Handle uruntime symlink (squashfs-root -> AppDir).
+
+    if appdir_path.is_symlink():
+        resolved = appdir_path.resolve()
+        print(f"ℹ️ squashfs-root is a symlink — resolved to: {resolved}")
+        appdir_path = resolved
+
     if not is_valid_appdir(appdir_path):
-        print(f"❌ Invalid or incomplete AppDir: {appdir_path}")
+        print(f"\n❌ Invalid or incomplete AppDir: {appdir_path}\n")
         return
 
     print(f"\n🔍 Scanning AppDir: {appdir_path}\n")
