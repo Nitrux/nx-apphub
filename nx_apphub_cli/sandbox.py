@@ -48,6 +48,7 @@ bwrap_boolean_flags = {
 }
 
 bwrap_list_flags = {
+    "bwrap_env": lambda key, val: [],
     "bwrap_unset-env": lambda k, v: ["--unsetenv", v],
     "cap-drop": lambda k, v: ["--cap-drop", v],
     "bind": lambda k, v: ["--bind"] + v.split(":", 1),
