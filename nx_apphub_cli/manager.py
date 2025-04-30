@@ -229,7 +229,7 @@ def remove(app_names):
     # -- Display apps that could not be removed.
 
     if missing_apps:
-        print("🔴 Skipped:\n\n" + "\n".join(missing_apps))
+        print("\n🔴 Skipped:\n\n" + "\n".join(missing_apps))
 
     print()
 
