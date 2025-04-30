@@ -82,9 +82,12 @@ def generate_firejail_profile(profile_name: str):
     profile_path = profile_dir / f"{profile_name}.profile"
     profile_content = f"""# Minimal Firejail profile for {profile_name}
 
+# Enable a default firewall
+
 netfilter
 
 # Restrict filesystem access
+
 private
 noroot
 restrict-namespaces

@@ -119,6 +119,29 @@ def validate_yaml_config(config):
         print("❌ Error: 'sandbox.type' must be one of: bwrap, firejail, none.\n")
         sys.exit(1)
 
+    # -- Validate integration section early (needed for Firejail).
+
+    integration = config.get("integration", {})
+    if not isinstance(integration, dict):
+        print("❌ Error: 'integration' must be a dictionary.\n")
+        sys.exit(1)
+
+    valid_keys = {"gui_app", "cli_app"}
+    actual_keys = set(integration.keys())
+
+    if not actual_keys:
+        print("❌ Error: 'integration' must contain one key: either 'gui_app' or 'cli_app'.\n")
+        sys.exit(1)
+
+    if len(actual_keys) > 1 or not actual_keys.issubset(valid_keys):
+        print("❌ Error: 'integration' must only contain one of: 'gui_app' or 'cli_app'.\n")
+        sys.exit(1)
+
+    only_key = next(iter(actual_keys))
+    if not isinstance(integration[only_key], bool):
+        print(f"❌ Error: 'integration.{only_key}' must be a boolean.\n")
+        sys.exit(1)
+
     def validate_firejail(sandbox):
         required = {"name"}
         optional = {"aa_profile"}
@@ -184,33 +207,16 @@ def validate_yaml_config(config):
                 print(f"❌ Error: 'sandbox.{key}' must be a string or integer.\n")
                 sys.exit(1)
 
+    # -- Firejail validation (disallow GUI apps).
+
     if sandbox_type == "firejail":
         validate_firejail(sandbox)
+        if integration.get("gui_app"):
+            print("❌ Error: Firejail sandboxing is only supported for CLI apps.\n")
+            print("👉 Use Bubblewrap (bwrap) for GUI applications instead.\n")
+            sys.exit(1)
     elif sandbox_type == "bwrap":
         validate_bwrap(sandbox)
-
-    # -- Validate integration section.
-
-    integration = config.get("integration", {})
-    if not isinstance(integration, dict):
-        print("❌ Error: 'integration' must be a dictionary.\n")
-        sys.exit(1)
-
-    valid_keys = {"gui_app", "cli_app"}
-    actual_keys = set(integration.keys())
-
-    if not actual_keys:
-        print("❌ Error: 'integration' must contain one key: either 'gui_app' or 'cli_app'.\n")
-        sys.exit(1)
-
-    if len(actual_keys) > 1 or not actual_keys.issubset(valid_keys):
-        print("❌ Error: 'integration' must only contain one of: 'gui_app' or 'cli_app'.\n")
-        sys.exit(1)
-
-    only_key = next(iter(actual_keys))
-    if not isinstance(integration[only_key], bool):
-        print(f"❌ Error: 'integration.{only_key}' must be a boolean.\n")
-        sys.exit(1)
 
     # -- Validate runtime.
 
