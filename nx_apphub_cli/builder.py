@@ -216,6 +216,47 @@ Icon={app_name}
         desktop_file_path.write_text(desktop_content.strip() + "\n")
 
 
+def prepare_window_manager_launcher(app_dir):
+    """Locate and prepare a session launcher (.desktop) for a window manager inside the AppDir.
+
+    Prioritize Wayland session launchers over X11.
+    """
+    session_dirs = [
+        app_dir / "usr/share/wayland-sessions",
+        app_dir / "usr/share/xsessions"
+    ]
+
+    for session_dir in session_dirs:
+        if session_dir.is_dir():
+            matches = sorted(session_dir.glob("*.desktop"))
+            if matches:
+                launcher_path = matches[0]
+                target_path = app_dir / launcher_path.name
+
+                shutil.copy(launcher_path, target_path)
+
+                with target_path.open("r", encoding="utf-8") as f:
+                    lines = f.readlines()
+
+                updated_lines = []
+
+                for line in lines:
+                    if line.strip().startswith("Type="):
+                        updated_lines.append("Type=Application\n")
+                    else:
+                        updated_lines.append(line if line.endswith("\n") else line + "\n")
+
+                if not any(line.strip().startswith("NoDisplay=") for line in updated_lines):
+                    updated_lines.append("NoDisplay=true\n")
+
+                with target_path.open("w", encoding="utf-8") as f:
+                    f.writelines(updated_lines)
+
+                return target_path
+
+    return None
+
+
 def patch_binary_rpath(binary_path, config):
     """Patch the RPATH of the application binary to use $ORIGIN with the correct paths."""
 
@@ -413,9 +454,20 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     generate_apprun(app_dir, config)
 
     integration = config.get("integration", {})
-    hide_from_menu = integration.get("cli_app", False)
+    integration_type = integration.get("type", "gui")
 
-    fix_desktop_entry(app_name, app_dir, new_binary_path, hide_from_menu=hide_from_menu)
+    hide_from_menu = (integration_type == "cli")
+    is_window_manager = (integration_type == "wm")
+
+    if integration_type == "wm":
+        wm_launcher = prepare_window_manager_launcher(app_dir)
+        if not wm_launcher:
+            print("❌ Error: No session launcher (.desktop) found in Wayland/X11 session directories.\n")
+            cleanup_cache(app_name)
+            print()
+            sys.exit(1)
+    else:
+        fix_desktop_entry(app_name, app_dir, new_binary_path, hide_from_menu=hide_from_menu)
 
     copy_system_icon(app_name, app_dir, config["buildinfo"].get("iconpath", None))
 

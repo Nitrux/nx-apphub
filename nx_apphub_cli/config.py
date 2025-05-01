@@ -126,20 +126,9 @@ def validate_yaml_config(config):
         print("❌ Error: 'integration' must be a dictionary.\n")
         sys.exit(1)
 
-    valid_keys = {"gui_app", "cli_app"}
-    actual_keys = set(integration.keys())
-
-    if not actual_keys:
-        print("❌ Error: 'integration' must contain one key: either 'gui_app' or 'cli_app'.\n")
-        sys.exit(1)
-
-    if len(actual_keys) > 1 or not actual_keys.issubset(valid_keys):
-        print("❌ Error: 'integration' must only contain one of: 'gui_app' or 'cli_app'.\n")
-        sys.exit(1)
-
-    only_key = next(iter(actual_keys))
-    if not isinstance(integration[only_key], bool):
-        print(f"❌ Error: 'integration.{only_key}' must be a boolean.\n")
+    integration_type = integration.get("type")
+    if integration_type not in ("cli", "gui", "wm"):
+        print("❌ Error: 'integration.type' must be one of: cli, gui, wm.\n")
         sys.exit(1)
 
     def validate_firejail(sandbox):
@@ -211,7 +200,7 @@ def validate_yaml_config(config):
 
     if sandbox_type == "firejail":
         validate_firejail(sandbox)
-        if integration.get("gui_app"):
+        if integration_type in ("gui", "wm"):
             print("❌ Error: Firejail sandboxing is only supported for CLI apps.\n")
             print("👉 Use Bubblewrap (bwrap) for GUI applications instead.\n")
             sys.exit(1)

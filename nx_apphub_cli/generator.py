@@ -179,7 +179,7 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
             "type": "none"
         },
         "integration": {
-            f"{integration_key}_app": True
+            "type": integration_key
         }
     }
     return yaml_data, fields
