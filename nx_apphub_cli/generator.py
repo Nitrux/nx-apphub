@@ -22,13 +22,14 @@
 #    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
 #############################################################################################################################################################################
 
-import gzip
-import requests
 import argparse
-import yaml
+import gzip
+import re
 from io import BytesIO
 from pathlib import Path
-import re
+
+import requests
+import yaml
 
 
 # -- Packages to exclude from being added to the YAML.
@@ -163,9 +164,7 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
             "name": package_name,
             "version": version,
             "binarypath": "/usr/bin/REPLACE-ME",
-            "distrorepo": {
-                "base": [distro_entry]
-            },
+            "distrorepo": [distro_entry],
             "deps": deps,
             "runtime": runtime
         },
