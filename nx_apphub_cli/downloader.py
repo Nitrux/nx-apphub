@@ -89,7 +89,11 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         "libgl1",
         "binutils",
         "binutils-common",
-        "binutils-x86-64-linux-gnu"
+        "binutils-x86-64-linux-gnu",
+        "libgbm1",
+        "libgl1-mesa-dri",
+        "libgles2",
+        "libdrm2"
     }
 
     # -- Skip downloading if the package is in the exclusion list.
