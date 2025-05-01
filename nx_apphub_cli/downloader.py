@@ -86,7 +86,10 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         "libstdc++6",
         "libglx0",
         "libegl1",
-        "libgl1"
+        "libgl1",
+        "binutils",
+        "binutils-common",
+        "binutils-x86-64-linux-gnu"
     }
 
     # -- Skip downloading if the package is in the exclusion list.
