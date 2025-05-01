@@ -95,7 +95,7 @@ def get_icon_name_from_desktop(app_dir):
     return None
 
 
-def copy_system_icon(app_name, app_dir, icon_path, quiet=True):
+def copy_system_icon(app_name, app_dir, config, icon_path, quiet=True):
     """Copy the icon referenced in the .desktop file to the root of AppDir with the correct name and extension."""
 
     # -- Try to extract icon name from .desktop file.
@@ -111,10 +111,15 @@ def copy_system_icon(app_name, app_dir, icon_path, quiet=True):
                 print(f"✔️ Using provided icon: {icon_dest.name}")
             return
 
-    system_icon = (
-        find_system_icon(icon_name, app_dir)
-        or find_system_icon("utilities-terminal", Path("/"))
-    )
+    integration_type = config.get("integration", {}).get("type", "gui")
+
+    if integration_type == "wm":
+        system_icon = find_system_icon("preferences-system-windows", Path("/"))
+    else:
+        system_icon = (
+            find_system_icon(icon_name, app_dir)
+            or find_system_icon("utilities-terminal", Path("/"))
+        )
 
     if system_icon:
         icon_dest = app_dir / f"{icon_name}{system_icon.suffix}"
@@ -239,14 +244,25 @@ def prepare_window_manager_launcher(app_dir):
                     lines = f.readlines()
 
                 updated_lines = []
+                icon_found = False
+                nodisplay_found = False
 
                 for line in lines:
-                    if line.strip().startswith("Type="):
+                    stripped = line.strip()
+                    if stripped.startswith("Type="):
                         updated_lines.append("Type=Application\n")
+                    elif stripped.startswith("Icon="):
+                        updated_lines.append("Icon=preferences-system-windows\n")
+                        icon_found = True
+                    elif stripped.startswith("NoDisplay="):
+                        updated_lines.append("NoDisplay=true\n")
+                        nodisplay_found = True
                     else:
                         updated_lines.append(line if line.endswith("\n") else line + "\n")
 
-                if not any(line.strip().startswith("NoDisplay=") for line in updated_lines):
+                if not icon_found:
+                    updated_lines.append("Icon=preferences-system-windows\n")
+                if not nodisplay_found:
                     updated_lines.append("NoDisplay=true\n")
 
                 with target_path.open("w", encoding="utf-8") as f:
@@ -469,7 +485,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     else:
         fix_desktop_entry(app_name, app_dir, new_binary_path, hide_from_menu=hide_from_menu)
 
-    copy_system_icon(app_name, app_dir, config["buildinfo"].get("iconpath", None))
+    copy_system_icon(app_name, app_dir, config, config["buildinfo"].get("iconpath", None))
 
     # -- Determine the final AppImage location.
 
