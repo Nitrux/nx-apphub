@@ -131,6 +131,11 @@ def validate_yaml_config(config):
         print("❌ Error: 'integration.type' must be one of: cli, gui, wm.\n")
         sys.exit(1)
 
+    if integration_type == "wm" and sandbox_type != "none":
+        print("❌ Error: Window manager integration must not use a sandbox.\n")
+        print("👉 Set 'sandbox.type' to 'none' when using integration.type: wm.\n")
+        sys.exit(1)
+
     def validate_firejail(sandbox):
         required = {"name"}
         optional = {"aa_profile"}
