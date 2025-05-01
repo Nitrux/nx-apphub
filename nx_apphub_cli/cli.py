@@ -91,13 +91,7 @@ def main():
         subparser_generate.add_argument("--components", nargs="*", default=["main"], help="APT components (default: main)")
         subparser_generate.add_argument("--output", default="app.yml", help="Output YAML file")
         subparser_generate.add_argument("--description-output", help="Output application metadata file")
-
-        subparser_generate.add_argument(
-            "--integration-type",
-            choices=["cli", "gui", "wm"],
-            default="gui",
-            help="Integration type: cli, gui, or wm (default: gui)"
-        )
+        subparser_generate.add_argument("--integration-type", choices=["cli", "gui", "wm"], default="gui", help="Integration type: cli, gui, or wm (default: gui)")
 
         args = parser.parse_args()
 
