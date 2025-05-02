@@ -76,13 +76,11 @@ debian_snapshots = [
 def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
 
-    # -- Packages to exclude from downloading.
-
     excluded_packages = {
-        "libc6", 
-        "libglib2.0-0t64", 
-        "libglib2.0-0", 
-        "libgcc-s1", 
+        "libc6",
+        "libglib2.0-0t64",
+        "libglib2.0-0",
+        "libgcc-s1",
         "libstdc++6",
         "libglx0",
         "libegl1",
@@ -93,12 +91,10 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         "libdrm2"
     }
 
-    # -- Skip downloading if the package is in the exclusion list.
-
     if pkg_name in excluded_packages:
         print(f"\n\n        ⚠️ Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppImage.\n")
         return None
-    
+
     package_dir = cache_dir / package_name
     deb_dir = package_dir / "debs"
     deb_dir.mkdir(parents=True, exist_ok=True)
@@ -109,67 +105,50 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
 
     for repo in repos:
         if "ppa" in repo:
-            ppa = repo["ppa"].strip()
-            if not ppa or "/" not in ppa:
-                print(f"❌ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
-                continue
-            try:
-                distro = repo["distro"].lower()
-                release = repo["release"]
-                arch = repo["arch"]
-            except KeyError as e:
-                print(f"❌ Error: Missing required key '{e.args[0]}' in repository entry: {repo}")
-                continue
+            result = fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet)
+            if result:
+                return result
+            continue
 
-            ppa_url = f"https://ppa.launchpadcontent.net/{ppa}/{distro}"
+        distro = repo.get('distro', '').lower()
+        release = repo.get('release')
+        arch = repo.get('arch')
+        components = repo.get('components', ["main"])
 
-            pkg_info = fetch_package_metadata(ppa_url, release, arch, pkg_name)
-            if pkg_info:
-                deb_url = f"{ppa_url}/{pkg_info}"
-                if not quiet:
-                    print(f"Downloading {pkg_name} from {deb_url}...")
-                return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
+        if not (distro and release and arch):
+            print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
+            continue
 
+        if distro == "debian":
+            mirror_list = debian_mirrors
+        elif distro == "ubuntu":
+            mirror_list = ubuntu_mirrors
+        elif distro == "devuan":
+            mirror_list = devuan_mirrors
+        elif distro == "kde-neon":
+            mirror_list = kde_neon_mirrors
+        elif distro == "nitrux":
+            mirror_list = nitrux_mirrors
+        elif distro == "debian-snapshots":
+            mirror_list = debian_snapshots
         else:
-            distro = repo['distro'].lower()
-            release = repo['release']
-            arch = repo['arch']
+            if not quiet:
+                print(f"⚠️ Skipping unknown distro: {distro}")
+            continue
 
-            if distro not in ["debian", "ubuntu", "devuan", "kde-neon", "nitrux", "debian-snapshots"]:
-                if not quiet:
-                    print(f"Invalid distro: {distro}. Supported: Debian, Ubuntu, Devuan, KDE Neon.")
-                continue
-
-            # -- Select the correct mirror list.
-
-            # -- NOTE: The options "nitrux" and "debian-snapshots" are purposefully undocumented because I'm only adding them to test
-            # -- building the MauiKit AppImages using the packages in our repositories and the packages used to compile them, which is the whole reason I made this, lol.
-
-            if distro == "debian":
-                mirror_list = debian_mirrors
-            elif distro == "ubuntu":
-                mirror_list = ubuntu_mirrors
-            elif distro == "devuan":
-                mirror_list = devuan_mirrors
-            elif distro == "kde-neon":
-                mirror_list = kde_neon_mirrors
-            elif distro == "nitrux":
-                mirror_list = nitrux_mirrors
-            elif distro == "debian-snapshots":
-                mirror_list = debian_snapshots
-            else:
-                continue
-
-            for mirror in mirror_list:
-                components = repo.get("components", ["main"])
-
-                for component in components:
+        for mirror in mirror_list:
+            for component in components:
+                try:
                     pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name, component)
                     if pkg_info:
                         deb_url = f"{mirror}/{pkg_info}"
                         if not quiet:
-                            print(f"Downloading {pkg_name} from {deb_url}...")
+                            print(f"📦 Downloading {pkg_name} from {deb_url}...")
                         return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
+                except Exception as e:
+                    if not quiet:
+                        print(f"⚠️ Failed to fetch {pkg_name} from {mirror} [{component}]: {e}")
+                    continue
 
     sys.stdout.write("\n\n")
     sys.stdout.flush()
@@ -185,22 +164,56 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
         response = requests.get(packages_url, timeout=20, stream=True)
         response.raise_for_status()
 
-        with gzip.open(response.raw, "rt", encoding="utf-8", errors="ignore") as f:
-            current_package = None
-            filename = None
+        try:
+            with gzip.open(response.raw, "rt", encoding="utf-8", errors="ignore") as f:
+                current_package = None
+                filename = None
 
-            for line in f:
-                line = line.strip()
+                for line in f:
+                    line = line.strip()
 
-                if line.startswith("Package: "):
-                    current_package = line.split("Package: ")[1]
+                    if line.startswith("Package: "):
+                        current_package = line.split("Package: ")[1]
 
-                elif line.startswith("Filename: ") and current_package == pkg_name:
-                    filename = line.split("Filename: ")[1]
-                    return filename
+                    elif line.startswith("Filename: ") and current_package == pkg_name:
+                        filename = line.split("Filename: ")[1]
+                        return filename
 
-    except requests.RequestException as e:
+        except (OSError, EOFError, gzip.BadGzipFile) as gz_err:
+            print(f"\n❌ Error: Failed to decompress metadata from {packages_url}: {gz_err}\n")
+            return None
+
+    except requests.exceptions.RequestException as e:
         print(f"\n❌ Error: Failed to fetch metadata from {packages_url}: {e}\n")
+
+    return None
+
+
+def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
+    ppa = repo["ppa"].strip()
+    if not ppa or "/" not in ppa:
+        print(f"❌ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
+        return None
+
+    distro = repo.get("distro", "ubuntu").lower()
+    release = repo.get("release")
+    arch = repo.get("arch")
+
+    if not (distro and release and arch):
+        print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
+        return None
+
+    ppa_url = f"https://ppa.launchpadcontent.net/{ppa}/{distro}"
+    try:
+        pkg_info = fetch_package_metadata(ppa_url, release, arch, pkg_name)
+        if pkg_info:
+            deb_url = f"{ppa_url}/{pkg_info}"
+            if not quiet:
+                print(f"📦 Downloading {pkg_name} from {deb_url}...")
+            return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
+    except Exception as e:
+        if not quiet:
+            print(f"⚠️ Failed to fetch {pkg_name} from {ppa_url}: {e}")
 
     return None
 
