@@ -304,6 +304,7 @@ def patch_binary_rpath(binary_path, config):
             f"$ORIGIN/../..{setlibpath}64",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/inkscape",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy",
+            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/pulseaudio",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/qml",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt6/qml",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/plugins",
