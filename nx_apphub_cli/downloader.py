@@ -42,9 +42,9 @@ cache_dir = Path.home() / ".cache/nx-apphub-cli"
 debian_mirrors = [
     "https://deb.debian.org/debian",
     "https://ftp.debian.org/debian",
-    "https://ftp.uk.debian.org/debian",
-    "https://ftp.us.debian.org/debian",
-    "https://ftp.de.debian.org/debian",
+    "https://uk.mirrors.clouvider.net/debian/",
+    "https://atl.mirrors.clouvider.net/debian/",
+    "https://ftp.tu-clausthal.de/debian/",
 ]
 
 ubuntu_mirrors = [
