@@ -63,7 +63,8 @@ def install(app_names):
     if not isinstance(app_names, list):
         app_names = [app_names]
 
-    print(f"\n[ ⚡ Installing: {', '.join(app_names)} ]\n")
+    print(f"\n[ ⚡ Installing: {', '.join(app_names)} ]")
+    print()
 
     # -- Ensure the repository is valid.
 
@@ -77,13 +78,26 @@ def install(app_names):
             check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
     else:
-        subprocess.run(
-            ["git", "-C", str(repo_base_dir), "pull"],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        try:
+            subprocess.run(
+                ["git", "-C", str(repo_base_dir), "pull"],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except subprocess.CalledProcessError:
+            print("⚠️  Warning: Failed to update the app repository. Recloning...")
+
+            try:
+                shutil.rmtree(repo_base_dir)
+            except Exception as e:
+                print(f"    ❌ Error: Failed to remove broken repo: {e}")
+                sys.exit(1)
+
+            subprocess.run(
+                ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
 
     for app_name in app_names:
-        print(f"\n[ 🚀 Processing: {app_name} ]\n")
 
         # -- Load YAML and determine AppBox filename.
 
@@ -188,7 +202,7 @@ def install(app_names):
 
         print(f"\n✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
 
-    print("\n🎉 All requested applications have been processed!\n")
+    print("🎉 All requested applications have been processed!\n")
 
 
 def remove(app_names):
@@ -232,6 +246,7 @@ def remove(app_names):
         print("\n🔴 Skipped:\n\n" + "\n".join(missing_apps))
 
     print()
+    print("🎉 All requested applications have been processed!\n")
 
 
 def search(app_names):
@@ -477,7 +492,7 @@ def downgrade(app_names):
         except (tarfile.TarError, OSError) as e:
             print(f"❌ Error: Could not restore {app_name} from backup. Reason: {e}")
 
-    print("\n🎉 All requested applications have been processed!\n")
+    print("🎉 All requested applications have been processed!\n")
 
 
 def format_size(size_bytes):

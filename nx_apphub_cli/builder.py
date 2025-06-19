@@ -361,8 +361,8 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
             subprocess.run(
                 cmd,
                 check=True,
-                stdout=None if not quiet else devnull,
-                stderr=None if not quiet else devnull,
+                stdout=sys.stdout if not quiet else devnull,
+                stderr=sys.stderr if not quiet else devnull,
                 env=env
             )
 
@@ -424,18 +424,27 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     prebuild_commands = config.get("apprunconf", {}).get("prebuild_commands", [])
     if prebuild_commands:
-        print(f"🔧 Running prebuild commands for {app_name} inside {app_dir}...")
+        print(f"🔧 Running prebuild commands for {app_name} inside {app_dir}...\n")
         env = os.environ.copy()
         env["APPDIR"] = str(app_dir)
 
         for cmd in prebuild_commands:
             cmd_resolved = cmd.replace("$APPDIR", str(app_dir))
             try:
-                subprocess.run(cmd_resolved, shell=True, check=True, env=env, cwd=app_dir, stderr=subprocess.PIPE)
-                print(f"\n    🤖 Command executed: {cmd_resolved}\n")
+                subprocess.run(
+                    cmd_resolved,
+                    shell=True,
+                    check=True,
+                    env=env,
+                    cwd=app_dir,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE
+                )
+                print(f"    🤖 Command executed: {cmd_resolved}")
+                print()
             except subprocess.CalledProcessError as e:
                 print(f"❌ Error: Failed to execute prebuild command '{cmd_resolved}'.\n")
-                print(f"📜 Output:\n{e.stderr.decode()}\n")
+                print(f"📜 Output:\n{e.stderr.decode(errors='replace')}\n")
                 cleanup_cache(app_name)
                 return
 
