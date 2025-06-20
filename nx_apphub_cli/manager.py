@@ -70,6 +70,7 @@ def install(app_names):
 
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
         print(f"⚠️ Warning: {repo_base_dir} is not a valid Git repository. Removing...")
+        print()
         shutil.rmtree(repo_base_dir)
 
     if not (repo_base_dir / ".git").exists():
@@ -104,6 +105,7 @@ def install(app_names):
         app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
         if not app_yaml_path.exists():
             print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.")
+            print()
             continue
 
         config = load_yaml_config(app_yaml_path)
@@ -342,6 +344,7 @@ def update(app_names):
         app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
         if not app_yaml_path.exists():
             print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
+            print()
             continue
 
         # -- Load YAML and check latest version.

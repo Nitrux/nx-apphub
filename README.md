@@ -23,7 +23,9 @@ For more in-depth information about NX AppHub CLI, please see the [Wiki](https:/
 ```
 appstream
 binutils
+bubblewrap
 file
+firejail
 fuse3
 git
 libfuse2t64
@@ -33,13 +35,15 @@ zstd
 
 # Installation
 
-To install NX AppHub CLI we recommend using pipx.
+To install NX AppHub CLI we recommend using `pipx`.
 
 ## Single-user
 
 ```
 pipx install git+https://github.com/Nitrux/nx-apphub.git
 ```
+
+> _⚠️ Important: pipx will install nx-apphub-cli to `$HOME/.local/bin`, add this directory to `$PATH`._
 
 ## System-wide
 
