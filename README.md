@@ -43,7 +43,7 @@ To install NX AppHub CLI we recommend using `pipx`.
 pipx install git+https://github.com/Nitrux/nx-apphub.git
 ```
 
-> _⚠️ Important: pipx will install nx-apphub-cli to `$HOME/.local/bin`, add this directory to `$PATH`._
+> _⚠️ Important: pipx will install `nx-apphub-cli` to `$HOME/.local/bin`, add this directory to `$PATH`._
 
 ## System-wide
 
