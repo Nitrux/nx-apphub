@@ -84,9 +84,6 @@ def generate_apprun(app_dir, config):
 
     sandbox = config.get("sandbox", {})
 
-    # -- Use get_sandbox_exec_block to generate the sandbox execution block.
-
-    sandbox_exec_block = get_sandbox_exec_block(config, exec_cmd)
 
     # -- Verify that the sandbox_exec_block is correctly generated.
 

@@ -74,8 +74,20 @@ def install(app_names):
         print()
         shutil.rmtree(repo_base_dir)
 
+    # -- If repo is valid and non-empty, update it.
+
+    if (repo_base_dir / ".git").exists() and any(repo_dir.glob("*")):
+        try:
+            subprocess.run(
+                ["git", "-C", str(repo_base_dir), "pull"],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            print("🔄 Applications repository updated.\n")
+        except subprocess.CalledProcessError:
+            print("⚠️ Warning: Failed to update repository. Continuing with existing version.\n")
+
     if not any(repo_dir.glob("*")):
-        print("🔄 App repository is missing or empty. Cloning fresh copy...\n")
+        print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 subprocess.run(
@@ -279,12 +291,19 @@ def search(app_names):
 
     for app_name in app_names:
         app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
-        if app_yaml_path.exists():
-            config = load_yaml_config(app_yaml_path)
-            app_version = config["buildinfo"].get("version", "unknown")
-            found_apps.append(f"    ✅ {app_name} - Version: {app_version} - Arch: {system_arch}")
-        else:
-            missing_apps.append(f"    ❌ {app_name}")
+        matched_paths = [
+            p for p in (repo_dir / system_arch).glob("*")
+            if app_name in p.name
+        ]
+
+        for p in matched_paths:
+            app_yaml = p / "app.yml"
+            if app_yaml.exists():
+                config = load_yaml_config(app_yaml)
+                version = config["buildinfo"].get("version", "unknown")
+                found_apps.append(f"    ✅ {p.name} - Version: {version} - Arch: {system_arch}")
+            else:
+                missing_apps.append(f"    ❌ {p.name} (Missing YAML)")
 
     if found_apps:
         print("\n🟢 Found Applications:\n")
