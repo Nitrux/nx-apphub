@@ -215,7 +215,8 @@ def remove(app_names):
     if isinstance(app_names, str):
         app_names = [app_names]
 
-    print(f"\n[ 🗑  Removing: {', '.join(app_names)} ]\n")
+    print(f"\n[ 🗑  Removing: {', '.join(app_names)} ]")
+    print()
 
     removed_apps = []
     missing_apps = []
@@ -245,7 +246,7 @@ def remove(app_names):
     # -- Display apps that could not be removed.
 
     if missing_apps:
-        print("\n🔴 Skipped:\n\n" + "\n".join(missing_apps))
+        print("🔴 Skipped:\n\n" + "\n".join(missing_apps))
 
     print()
     print("🎉 All requested applications have been processed!\n")
