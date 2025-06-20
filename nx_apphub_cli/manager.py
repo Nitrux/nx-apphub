@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import yaml
 import tarfile
+import tempfile
 import platform
 from datetime import datetime
 from pathlib import Path
@@ -73,30 +74,30 @@ def install(app_names):
         print()
         shutil.rmtree(repo_base_dir)
 
-    if not (repo_base_dir / ".git").exists():
-        subprocess.run(
-            ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-    else:
+    if not any(repo_dir.glob("*")):
+        print("🔄 App repository is missing or empty. Cloning fresh copy...\n")
         try:
-            subprocess.run(
-                ["git", "-C", str(repo_base_dir), "pull"],
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            with tempfile.TemporaryDirectory() as tmpdir:
+                subprocess.run(
+                    ["git", "clone", "--depth=1", git_repo_url, tmpdir],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+
+                tmp_apps_dir = Path(tmpdir) / "apps"
+                if not tmp_apps_dir.exists():
+                    print("❌ Error: Cloned repository does not contain 'apps/' directory.")
+                    sys.exit(1)
+
+                if repo_dir.exists():
+                    shutil.rmtree(repo_dir)
+                shutil.copytree(tmp_apps_dir, repo_dir)
+
         except subprocess.CalledProcessError:
-            print("⚠️  Warning: Failed to update the app repository. Recloning...")
-
-            try:
-                shutil.rmtree(repo_base_dir)
-            except Exception as e:
-                print(f"    ❌ Error: Failed to remove broken repo: {e}")
-                sys.exit(1)
-
-            subprocess.run(
-                ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            print("❌ Error: Failed to clone app repository.")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ Error: Unexpected failure during clone: {e}")
+            sys.exit(1)
 
     for app_name in app_names:
 
