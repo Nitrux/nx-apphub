@@ -247,6 +247,14 @@ def remove(app_names):
         try:
             app_file.unlink()
             removed_apps.append(f"    ✅ {app_name} (Removed)")
+
+            # -- Attempt to remove the Firejail profile if it exists.
+
+            firejail_profile = Path.home() / ".local/share/nx-apphub-cli/firejail.d" / f"{app_name}-profile.profile"
+            if firejail_profile.exists():
+                firejail_profile.unlink()
+                removed_apps.append(f"\n🔒 Firejail profile deleted: {firejail_profile.name}")
+
         except PermissionError:
             missing_apps.append(f"    ❌ {app_name} (Permission Denied)")
             continue
