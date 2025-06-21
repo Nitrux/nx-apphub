@@ -68,10 +68,6 @@ nitrux_mirrors = [
     "https://packagecloud.io/nitrux/depot/debian",
 ]
 
-debian_snapshots = [
-    "https://snapshot.debian.org/archive/debian/20250101T083404Z",
-]
-
 
 def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
@@ -129,8 +125,6 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
             mirror_list = kde_neon_mirrors
         elif distro == "nitrux":
             mirror_list = nitrux_mirrors
-        elif distro == "debian-snapshots":
-            mirror_list = debian_snapshots
         else:
             if not quiet:
                 print(f"⚠️ Skipping unknown distro: {distro}")
