@@ -42,25 +42,23 @@ cache_dir = Path.home() / ".cache/nx-apphub-cli"
 debian_mirrors = [
     "https://deb.debian.org/debian",
     "https://ftp.debian.org/debian",
-    "https://uk.mirrors.clouvider.net/debian/",
-    "https://atl.mirrors.clouvider.net/debian/",
-    "https://ftp.tu-clausthal.de/debian/",
+    "https://uk.mirrors.clouvider.net/debian",
+    "https://atl.mirrors.clouvider.net/debian",
+    "https://ftp.tu-clausthal.de/debian",
 ]
 
 ubuntu_mirrors = [
     "https://archive.ubuntu.com/ubuntu",
     "https://security.ubuntu.com/ubuntu",
+    "https://mirrors.kernel.org/ubuntu",
 ]
 
 devuan_mirrors = [
-    "https://deb.devuan.org/devuan",
-    "https://devuan.ipacct.com/devuan",
-    "https://mirror.vpgrp.io/devuan",
-    "https://mirrors.dotsrc.org/devuan",
+    "http://deb.devuan.org/merged",
 ]
 
 kde_neon_mirrors = [
-    "https://archive.neon.kde.org/user",
+    "https://archive.neon.kde.org/stable",
 ]
 
 nitrux_mirrors = [
@@ -133,15 +131,25 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         for mirror in mirror_list:
             for component in components:
                 try:
+                    if not quiet:
+                        print(f"\n\n      → Trying {mirror} [{component}]...")
+
                     pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name, component)
                     if pkg_info:
                         deb_url = f"{mirror}/{pkg_info}"
                         if not quiet:
-                            print(f"📦 Downloading {pkg_name} from {deb_url}...")
-                        return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
+                            print(f"\n        📦 Downloading {pkg_name} from {deb_url}...")
+                        return download_file(
+                            deb_url,
+                            deb_dir / f"{pkg_name}.deb",
+                            quiet=quiet
+                        )
+                    else:
+                        if not quiet:
+                            print(f"        ⛔ No metadata for {pkg_name} from {mirror} [{component}]")
                 except Exception as e:
                     if not quiet:
-                        print(f"⚠️ Failed to fetch {pkg_name} from {mirror} [{component}]: {e}")
+                        print(f"        ⚠️ Failed to fetch {pkg_name} from {mirror} [{component}]: {e}")
                     continue
 
     sys.stdout.write("\n\n")
@@ -212,23 +220,21 @@ def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
     return None
 
 
-def download_file(url, dest_path, quiet=True):
-    """Download a file from a URL and save it to the given destination path."""
-    import requests
+def download_file(url, destination, quiet=True):
+    try:
+        response = requests.get(url, stream=True, timeout=20)
+        response.raise_for_status()
 
-    if not quiet:
-        print(f"Downloading {url} to {dest_path}")
+        with open(destination, "wb") as f:
+            for chunk in response.iter_content(1024):
+                f.write(chunk)
 
-    response = requests.get(url, stream=True)
-    if response.status_code != 200:
-        print(f"\n❌ Error: Failed to download {url}. HTTP {response.status_code}\n")
+        if not quiet:
+            print(f"\n        🎉 Successfully downloaded: {destination}\n")
+
+        return destination
+
+    except requests.RequestException as e:
+        if not quiet:
+            print(f"        ❌ Download failed: {e}")
         return None
-
-    with open(dest_path, "wb") as f:
-        for chunk in response.iter_content(1024):
-            f.write(chunk)
-
-    if not quiet:
-        print(f"Successfully downloaded {dest_path}")
-
-    return dest_path
