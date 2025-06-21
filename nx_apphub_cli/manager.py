@@ -89,21 +89,10 @@ def install(app_names):
     if not any(repo_dir.glob("*")):
         print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
         try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                subprocess.run(
-                    ["git", "clone", "--depth=1", git_repo_url, tmpdir],
-                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-
-                tmp_apps_dir = Path(tmpdir) / "apps"
-                if not tmp_apps_dir.exists():
-                    print("❌ Error: Cloned repository does not contain 'apps/' directory.")
-                    sys.exit(1)
-
-                if repo_dir.exists():
-                    shutil.rmtree(repo_dir)
-                shutil.copytree(tmp_apps_dir, repo_dir)
-
+            subprocess.run(
+                ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
         except subprocess.CalledProcessError:
             print("❌ Error: Failed to clone app repository.")
             sys.exit(1)
@@ -223,21 +212,16 @@ def install(app_names):
 def remove(app_names):
     """Remove one or more installed AppBoxes."""
 
-    # -- Ensure app_names is a list.
-
     if isinstance(app_names, str):
         app_names = [app_names]
 
-    print(f"\n[ 🗑  Removing: {', '.join(app_names)} ]")
-    print()
+    print(f"\n[ 🗑  Removing: {', '.join(app_names)} ]\n")
 
     removed_apps = []
     missing_apps = []
+    firejail_profiles_deleted = []
 
     for app_name in app_names:
-
-        # -- Find the installed AppBox matching the app name and system architecture.
-
         app_file = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
 
         if not app_file:
@@ -248,29 +232,25 @@ def remove(app_names):
             app_file.unlink()
             removed_apps.append(f"    ✅ {app_name} (Removed)")
 
-            # -- Attempt to remove the Firejail profile if it exists.
-
             firejail_profile = Path.home() / ".local/share/nx-apphub-cli/firejail.d" / f"{app_name}-profile.profile"
             if firejail_profile.exists():
                 firejail_profile.unlink()
-                removed_apps.append(f"\n🔒 Firejail profile deleted: {firejail_profile.name}")
+                firejail_profiles_deleted.append(firejail_profile.name)
 
         except PermissionError:
             missing_apps.append(f"    ❌ {app_name} (Permission Denied)")
             continue
 
-    # --Display removed apps.
-
     if removed_apps:
         print("🟢 Successfully Removed:\n\n" + "\n".join(removed_apps))
 
-    # -- Display apps that could not be removed.
+    if firejail_profiles_deleted:
+        print(f"\n🔒 Firejail profile(s) deleted: {', '.join(sorted(firejail_profiles_deleted))}")
 
     if missing_apps:
-        print("🔴 Skipped:\n\n" + "\n".join(missing_apps))
+        print("\n🔴 Skipped:\n\n" + "\n".join(missing_apps))
 
-    print()
-    print("🎉 All requested applications have been processed!\n")
+    print("\n🎉 All requested applications have been processed!\n")
 
 
 def search(app_names):
