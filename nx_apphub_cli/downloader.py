@@ -26,6 +26,7 @@ import gzip
 import re
 import sys
 from pathlib import Path
+from debian import debian_support
 
 import requests
 
@@ -67,7 +68,7 @@ nitrux_mirrors = [
 ]
 
 
-def get_latest_deb(pkg_name, repos, package_name, quiet=True):
+def get_latest_deb(pkg_name, repos, package_name, quiet=False):
     """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
 
     excluded_packages = {
@@ -96,6 +97,8 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     if not repos:
         print(f"❌ Error: No valid repositories provided for {pkg_name}. Aborting.\n")
         sys.exit(1)
+
+    candidates = []
 
     for repo in repos:
         if "ppa" in repo:
@@ -136,14 +139,16 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
 
                     pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name, component)
                     if pkg_info:
-                        deb_url = f"{mirror}/{pkg_info}"
-                        if not quiet:
-                            print(f"\n        📦 Downloading {pkg_name} from {deb_url}...")
-                        return download_file(
-                            deb_url,
-                            deb_dir / f"{pkg_name}.deb",
-                            quiet=quiet
-                        )
+                        filename, version_str = pkg_info
+                        version = debian_support.Version(version_str)
+                        deb_url = f"{mirror}/{filename}"
+                        candidates.append({
+                            "version": version,
+                            "version_str": version_str,
+                            "url": deb_url,
+                            "path": deb_dir / f"{pkg_name}.deb",
+                            "source": f"{mirror} [{component}]"
+                        })
                     else:
                         if not quiet:
                             print(f"        ⛔ No metadata for {pkg_name} from {mirror} [{component}]")
@@ -152,14 +157,24 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
                         print(f"        ⚠️ Failed to fetch {pkg_name} from {mirror} [{component}]: {e}")
                     continue
 
-    sys.stdout.write("\n\n")
-    sys.stdout.flush()
-    cleanup_cache(package_name)
-    raise RuntimeError(f"\n❌ Error: Package '{pkg_name}' could not be found in any repository.\n")
+    if not candidates:
+        sys.stdout.write("\n\n")
+        sys.stdout.flush()
+        cleanup_cache(package_name)
+        raise RuntimeError(f"\n❌ Error: Package '{pkg_name}' could not be found in any repository.\n")
+
+    candidates.sort(key=lambda c: c["version"], reverse=True)
+    best = candidates[0]
+
+    if not quiet:
+        print(f"\n        👉 Selected {pkg_name} version {best['version_str']} from {best['source']}")
+        print(f"\n        📥 Downloading {pkg_name} from {best['url']}...\n")
+
+    return download_file(best["url"], best["path"], quiet=quiet)
 
 
 def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
-    """Fetch the latest package path from Packages.gz metadata."""
+    """Fetch the package filename and version from Packages.gz metadata."""
     packages_url = f"{mirror}/dists/{release}/{component}/binary-{arch}/Packages.gz"
 
     try:
@@ -170,16 +185,24 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
             with gzip.open(response.raw, "rt", encoding="utf-8", errors="ignore") as f:
                 current_package = None
                 filename = None
+                version = None
 
                 for line in f:
                     line = line.strip()
 
                     if line.startswith("Package: "):
                         current_package = line.split("Package: ")[1]
+                        filename = None
+                        version = None
+
+                    elif line.startswith("Version: ") and current_package == pkg_name:
+                        version = line.split("Version: ")[1]
 
                     elif line.startswith("Filename: ") and current_package == pkg_name:
                         filename = line.split("Filename: ")[1]
-                        return filename
+
+                    if current_package == pkg_name and filename and version:
+                        return filename, version
 
         except (OSError, EOFError, gzip.BadGzipFile) as gz_err:
             print(f"\n❌ Error: Failed to decompress metadata from {packages_url}: {gz_err}\n")
@@ -191,7 +214,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
     return None
 
 
-def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
+def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=False):
     ppa = repo["ppa"].strip()
     if not ppa or "/" not in ppa:
         print(f"❌ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
@@ -220,7 +243,7 @@ def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
     return None
 
 
-def download_file(url, destination, quiet=True):
+def download_file(url, destination, quiet=False):
     try:
         response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()

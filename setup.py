@@ -32,7 +32,8 @@ setup(
     install_requires=[
         "requests",
         "pyyaml",
-        "tqdm"
+        "tqdm",
+        "python-debian",
     ],
     entry_points={
         "console_scripts": [

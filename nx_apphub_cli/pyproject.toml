@@ -15,7 +15,8 @@ requires-python = ">=3.6"
 dependencies = [
     "requests",
     "pyyaml",
-    "tqdm"
+    "tqdm",
+    "python-debian"
 ]
 
 [project.urls]
