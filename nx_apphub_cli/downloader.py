@@ -27,6 +27,7 @@ import re
 import sys
 from pathlib import Path
 from debian import debian_support
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -69,21 +70,12 @@ nitrux_mirrors = [
 
 
 def get_latest_deb(pkg_name, repos, package_name, quiet=False):
-    """Download the latest .deb package for the given pkg_name from mirrors using Packages.gz metadata."""
+    """Download the latest .deb package for the given pkg_name by probing all mirrors concurrently."""
 
     excluded_packages = {
-        "libc6",
-        "libglib2.0-0t64",
-        "libglib2.0-0",
-        "libgcc-s1",
-        "libstdc++6",
-        "libglx0",
-        "libegl1",
-        "libgl1",
-        "libgbm1",
-        "libgl1-mesa-dri",
-        "libgles2",
-        "libdrm2"
+        "libc6", "libglib2.0-0t64", "libglib2.0-0", "libgcc-s1", "libstdc++6",
+        "libglx0", "libegl1", "libgl1", "libgbm1", "libgl1-mesa-dri",
+        "libgles2", "libdrm2"
     }
 
     if pkg_name in excluded_packages:
@@ -99,7 +91,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
         print(f"❌ Error: No valid repositories provided for {pkg_name}. Aborting.\n")
         sys.exit(1)
 
-    candidates = []
+    probe_tasks = []
 
     for repo in repos:
         if "ppa" in repo:
@@ -114,7 +106,8 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
         components = repo.get("components", ["main"])
 
         if not (distro and release and arch):
-            print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
+            if not quiet:
+                print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
             continue
 
         if distro == "debian":
@@ -134,32 +127,47 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
 
         for mirror in mirror_list:
             for component in components:
-                try:
-                    if not quiet:
-                        print(f"\n\n      → Trying {mirror} [{component}]...")
+                probe_tasks.append((mirror, release, arch, pkg_name, component))
 
-                    pkg_info = fetch_package_metadata(mirror, release, arch, pkg_name, component)
-                    if pkg_info:
-                        filename, version_str = pkg_info
-                        version = debian_support.Version(version_str)
-                        deb_url = f"{mirror}/{filename}"
-                        candidates.append({
-                            "version": version,
-                            "version_str": version_str,
-                            "url": deb_url,
-                            "path": deb_dir / f"{pkg_name}.deb",
-                            "source": f"{mirror} [{component}]"
-                        })
-                    elif not quiet:
-                        print(f"        ⛔ No metadata for {pkg_name} from {mirror} [{component}]")
-                except Exception as e:
-                    if not quiet:
-                        print(f"        ⚠️ Failed to fetch {pkg_name} from {mirror} [{component}]: {e}")
-                    continue
+    candidates = []
+
+    if not quiet:
+        print()
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(fetch_package_metadata, mirror, release, arch, pkg_name, component): (mirror, component)
+            for (mirror, release, arch, pkg_name, component) in probe_tasks
+        }
+
+        mirror_logs = []
+
+        for future in as_completed(futures):
+            mirror, component = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    filename, version_str = result
+                    version = debian_support.Version(version_str)
+                    deb_url = f"{mirror}/{filename}"
+                    candidates.append({
+                        "version": version,
+                        "version_str": version_str,
+                        "url": deb_url,
+                        "path": deb_dir / f"{pkg_name}.deb",
+                        "source": f"{mirror} [{component}]"
+                    })
+                elif not quiet:
+                    mirror_logs.append(f"        ⛔ No metadata for {pkg_name} from {mirror} [{component}]")
+            except Exception as e:
+                if not quiet:
+                    mirror_logs.append(f"        ⚠️ Failed to fetch {pkg_name} from {mirror} [{component}]: {e}")
+
+    if not quiet and mirror_logs:
+        print("\n" + "\n".join(mirror_logs))
 
     if not candidates:
-        sys.stdout.write("\n\n")
-        sys.stdout.flush()
+        print()
         cleanup_cache(package_name)
         raise RuntimeError(f"\n❌ Error: Package '{pkg_name}' could not be found in any repository.\n")
 
@@ -167,8 +175,11 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
     best = candidates[0]
 
     if not quiet:
-        print(f"\n        👉 Selected: {pkg_name} version: {best['version_str']} from: {best['source']}")
-        print(f"\n        📥 Downloading: {pkg_name} from: {best['url']}...")
+        print()
+        print(f"        📦 Package: {pkg_name}")
+        print(f"        🔹 Version: {best['version_str']}")
+        print(f"        🔹 Source:  {best['source']}\n")
+        print(f"        📥 Downloading: {pkg_name} from: {best['url']}...\n")
 
     return download_file(best["url"], best["path"], quiet=quiet)
 
@@ -254,7 +265,7 @@ def download_file(url, destination, quiet=False):
                     f.write(chunk)
 
         if not quiet:
-            print(f"\n        🎉 Successfully downloaded: {destination}\n")
+            print(f"        🎉 Successfully downloaded: {destination}\n")
 
         return destination
 

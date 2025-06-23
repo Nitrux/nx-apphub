@@ -29,6 +29,7 @@ import yaml
 import tarfile
 import tempfile
 import platform
+import sys
 from datetime import datetime
 from pathlib import Path
 from shutil import get_terminal_size
@@ -229,8 +230,16 @@ def install(app_names):
                         for pkg_name, repo_list in download_tasks
                     }
 
+                    first = True
+
                     for future in as_completed(futures):
                         pkg_name = futures[future]
+
+                        if first:
+                            sys.stdout.write("\n\n")
+                            sys.stdout.flush()
+                            first = False
+
                         try:
                             deb_path = future.result()
                             if deb_path:
