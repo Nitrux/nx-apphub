@@ -87,7 +87,8 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
     }
 
     if pkg_name in excluded_packages:
-        print(f"\n\n        ⚠️ Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppImage.\n")
+        if not quiet:
+            print(f"\n\n        ⚠️ Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppImage.\n")
         return None
 
     package_dir = cache_dir / package_name
@@ -107,10 +108,10 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
                 return result
             continue
 
-        distro = repo.get('distro', '').lower()
-        release = repo.get('release')
-        arch = repo.get('arch')
-        components = repo.get('components', ["main"])
+        distro = repo.get("distro", "").lower()
+        release = repo.get("release")
+        arch = repo.get("arch")
+        components = repo.get("components", ["main"])
 
         if not (distro and release and arch):
             print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
@@ -149,9 +150,8 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
                             "path": deb_dir / f"{pkg_name}.deb",
                             "source": f"{mirror} [{component}]"
                         })
-                    else:
-                        if not quiet:
-                            print(f"        ⛔ No metadata for {pkg_name} from {mirror} [{component}]")
+                    elif not quiet:
+                        print(f"        ⛔ No metadata for {pkg_name} from {mirror} [{component}]")
                 except Exception as e:
                     if not quiet:
                         print(f"        ⚠️ Failed to fetch {pkg_name} from {mirror} [{component}]: {e}")
@@ -167,8 +167,8 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
     best = candidates[0]
 
     if not quiet:
-        print(f"\n        👉 Selected {pkg_name} version {best['version_str']} from {best['source']}")
-        print(f"\n        📥 Downloading {pkg_name} from {best['url']}...\n")
+        print(f"\n        👉 Selected: {pkg_name} version: {best['version_str']} from: {best['source']}")
+        print(f"\n        📥 Downloading: {pkg_name} from: {best['url']}...")
 
     return download_file(best["url"], best["path"], quiet=quiet)
 
@@ -209,7 +209,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
             return None
 
     except requests.exceptions.RequestException as e:
-        print(f"\n❌ Error: Failed to fetch metadata from {packages_url}: {e}\n")
+        print(f"\n❌ Error: Failed to fetch metadata from: {packages_url}: {e}\n")
 
     return None
 
@@ -238,7 +238,7 @@ def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=False):
             return download_file(deb_url, deb_dir / f"{pkg_name}.deb", quiet=quiet)
     except Exception as e:
         if not quiet:
-            print(f"⚠️ Failed to fetch {pkg_name} from {ppa_url}: {e}")
+            print(f"⚠️ Failed to fetch: {pkg_name} from: {ppa_url}: {e}")
 
     return None
 
@@ -249,8 +249,9 @@ def download_file(url, destination, quiet=False):
         response.raise_for_status()
 
         with open(destination, "wb") as f:
-            for chunk in response.iter_content(1024):
-                f.write(chunk)
+            for chunk in response.iter_content(chunk_size=65536):
+                if chunk:
+                    f.write(chunk)
 
         if not quiet:
             print(f"\n        🎉 Successfully downloaded: {destination}\n")

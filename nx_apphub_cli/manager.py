@@ -32,6 +32,7 @@ import platform
 from datetime import datetime
 from pathlib import Path
 from shutil import get_terminal_size
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
 
@@ -151,43 +152,96 @@ def install(app_names):
         dependencies = config["buildinfo"].get("deps", [])
 
         if dependencies:
-            print(f"📥 Downloading {len(dependencies)} dependencies:")
+            print(f"📥 Downloading {len(dependencies)} dependencies:\n")
+
+            # -- Prepare download tasks.
+
+            download_tasks = []
+
+            for dep in dependencies:
+                if isinstance(dep, dict):
+                    pkg_name = dep["name"]
+                    repo_id = dep.get("repo")
+                    if repo_id:
+                        repo_list = [ppa_repos.get(repo_id)]
+                        if repo_list[0] is None:
+                            print(f"❌ Error: Unknown repo ID '{repo_id}' for package '{pkg_name}'.")
+                            cleanup_cache(app_name)
+                            return
+                    else:
+                        repo_list = base_repos
+                else:
+                    pkg_name = dep
+                    repo_list = base_repos
+
+                download_tasks.append((pkg_name, repo_list))
+
+            # -- Prefetch metadata for all mirrors before starting parallel downloads.
+
+            from nx_apphub_cli.downloader import fetch_package_metadata
+
+            prefetch_targets = set()
+
+            for pkg_name, repo_list in download_tasks:
+                for repo in repo_list:
+                    distro = repo.get("distro", "").lower()
+                    release = repo.get("release")
+                    arch = repo.get("arch")
+                    components = repo.get("components", ["main"])
+                    if not (distro and release and arch):
+                        continue
+                    if distro == "debian":
+                        mirror_list = debian_mirrors
+                    elif distro == "ubuntu":
+                        mirror_list = ubuntu_mirrors
+                    elif distro == "devuan":
+                        mirror_list = devuan_mirrors
+                    elif distro == "kde-neon":
+                        mirror_list = kde_neon_mirrors
+                    elif distro == "nitrux":
+                        mirror_list = nitrux_mirrors
+                    else:
+                        continue
+                    for mirror in mirror_list:
+                        for component in components:
+                            prefetch_targets.add((mirror, release, arch, component, pkg_name))
+
+            for mirror, release, arch, component, pkg in prefetch_targets:
+                fetch_package_metadata(mirror, release, arch, pkg, component)
+
+            # -- Start progress bar manually.
 
             terminal_width = get_terminal_size((80, 20)).columns
-            print()
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
             with tqdm(
-                dependencies,
+                total=len(download_tasks),
                 desc="    ⏬ Fetching PKGs",
                 unit="pkg",
                 ncols=terminal_width,
                 dynamic_ncols=False,
                 bar_format="{l_bar}{bar}| {remaining:>8} • {rate_fmt:<14}"
             ) as progress:
-                for dep in progress:
-                    if isinstance(dep, dict):
-                        pkg_name = dep["name"]
-                        repo_id = dep.get("repo")
-                        if repo_id:
-                            repo_list = [ppa_repos.get(repo_id)]
-                            if repo_list[0] is None:
-                                progress.disable = True
-                                print(f"❌ Error: Unknown repo ID '{repo_id}' for package '{pkg_name}'.")
-                                cleanup_cache(app_name)
-                                return
-                        else:
-                            repo_list = base_repos
-                    else:
-                        pkg_name = dep
-                        repo_list = base_repos
 
-                    try:
-                        deb_path = get_latest_deb(pkg_name, repo_list, app_name)
-                        extract_deb(deb_path, app_name)
-                    except RuntimeError as e:
-                        progress.disable = True
-                        print(e)
-                        progress.close()
-                        return
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    futures = {
+                        executor.submit(get_latest_deb, pkg_name, repo_list, app_name): pkg_name
+                        for pkg_name, repo_list in download_tasks
+                    }
+
+                    for future in as_completed(futures):
+                        pkg_name = futures[future]
+                        try:
+                            deb_path = future.result()
+                            if deb_path:
+                                extract_deb(deb_path, app_name)
+                        except Exception as e:
+                            print(f"\n❌ Error downloading {pkg_name}: {e}")
+                            cleanup_cache(app_name)
+                            progress.close()
+                            return
+                        progress.update(1)
+
         else:
             print("📦 No dependencies listed.")
 
