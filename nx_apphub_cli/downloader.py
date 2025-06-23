@@ -55,6 +55,10 @@ ubuntu_mirrors = [
     "https://mirrors.kernel.org/ubuntu",
 ]
 
+ubuntu_ports_mirrors = [
+    "https://ports.ubuntu.com/ubuntu-ports/",
+]
+
 devuan_mirrors = [
     "http://deb.devuan.org/merged",
 ]
@@ -114,6 +118,8 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
             mirror_list = debian_mirrors
         elif distro == "ubuntu":
             mirror_list = ubuntu_mirrors
+        elif distro == "ubuntu-ports":
+            mirror_list = ubuntu_ports_mirrors
         elif distro == "devuan":
             mirror_list = devuan_mirrors
         elif distro == "kde-neon":

@@ -195,6 +195,8 @@ def install(app_names):
                         mirror_list = debian_mirrors
                     elif distro == "ubuntu":
                         mirror_list = ubuntu_mirrors
+                    elif distro == "ubuntu-ports":
+                        mirror_list = ubuntu_ports_mirrors
                     elif distro == "devuan":
                         mirror_list = devuan_mirrors
                     elif distro == "kde-neon":
