@@ -202,7 +202,7 @@ def main():
             print()
             prepare_appimage(config)
 
-            print("\n✅ AppImage creation complete!\n")
+            print("✅ AppImage creation complete!\n")
 
             if args.appdir_lint:
                 print(f"🧪 Running appdir-lint on: {args.appdir_lint}")
