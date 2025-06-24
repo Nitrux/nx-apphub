@@ -73,7 +73,7 @@ nitrux_mirrors = [
 ]
 
 
-def get_latest_deb(pkg_name, repos, package_name, quiet=False):
+def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name by probing all mirrors concurrently."""
 
     excluded_packages = {
@@ -190,7 +190,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=False):
                     mirror_logs.append(f"        ⚠️ Unhandled error for {pkg_name} from {mirror} [{component}]: {e}")
 
     if not quiet and mirror_logs:
-        print("\n" + "\n".join(mirror_logs))
+        print_grouped_logs(mirror_logs)
 
     if not candidates:
         print()
@@ -244,13 +244,13 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
         except (OSError, EOFError, gzip.BadGzipFile) as gz_err:
             return None, f"❌ Error: Failed to decompress metadata from {packages_url}: {gz_err}"
 
-        return None, f"⛔ No metadata for {pkg_name} from {mirror} [{component}]"
+        return None, f"⛔ No metadata for: {pkg_name} from: {mirror} [{component}]"
 
     except requests.exceptions.RequestException as e:
         return None, f"❌ Error: Failed to fetch metadata from: {packages_url}: {e}"
 
 
-def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=False):
+def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
     ppa = repo["ppa"].strip()
     if not ppa or "/" not in ppa:
         print(f"❌ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
@@ -279,7 +279,7 @@ def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=False):
     return None
 
 
-def download_file(url, destination, quiet=False):
+def download_file(url, destination, quiet=True):
     try:
         response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
@@ -298,3 +298,23 @@ def download_file(url, destination, quiet=False):
         if not quiet:
             print(f"        ❌ Download failed: {e}")
         return None
+
+
+def print_grouped_logs(logs):
+    """Group and print logs with visual separation by error type."""
+    fetch_errors = [msg for msg in logs if "Failed to fetch metadata" in msg]
+    decompress_errors = [msg for msg in logs if "Failed to decompress metadata" in msg]
+    no_metadata = [msg for msg in logs if "No metadata" in msg]
+    unhandled = [msg for msg in logs if msg not in fetch_errors + decompress_errors + no_metadata]
+
+    if fetch_errors:
+        print("\n" + "\n".join(f" {line}" for line in fetch_errors))
+
+    if decompress_errors:
+        print("\n" + "\n".join(f" {line}" for line in decompress_errors))
+
+    if no_metadata:
+        print("\n" + "\n".join(f" {line}" for line in no_metadata))
+
+    if unhandled:
+        print("\n" + "\n".join(f" {line}" for line in unhandled))

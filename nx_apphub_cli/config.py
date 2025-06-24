@@ -136,6 +136,28 @@ def validate_yaml_config(config):
         print("👉 Set 'sandbox.type' to 'none' when using integration.type: wm.\n")
         sys.exit(1)
 
+    # -- Validate distrorepo architecture consistency and allowed values.
+
+    distrorepo = config["buildinfo"].get("distrorepo", {})
+    if isinstance(distrorepo, list):
+        arches = set()
+        for entry in distrorepo:
+            arch = entry.get("arch")
+            if not arch:
+                print("❌ Error: Missing 'arch' key in distrorepo entry.\n")
+                sys.exit(1)
+            arches.add(arch)
+            distro = entry.get("distro")
+            if distro == "ubuntu" and arch != "amd64":
+                print("❌ Error: 'distrorepo.arch' for 'ubuntu' must be: amd64.\n")
+                sys.exit(1)
+            if distro == "ubuntu" and arch != "arm64":
+                print("❌ Error: 'distrorepo.arch' for 'ubuntu-ports' must be: arm64.\n")
+                sys.exit(1)
+        if len(arches) > 1:
+            print("❌ Error: 'distrorepo.arch' must not have mixed architectures.\n")
+            sys.exit(1)
+
     def validate_firejail(sandbox):
         required = {"name"}
         optional = {"aa_profile"}
