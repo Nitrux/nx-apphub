@@ -16,7 +16,8 @@ dependencies = [
     "requests",
     "pyyaml",
     "tqdm",
-    "python-debian"
+    "python-debian",
+    "pyelftools
 ]
 
 [project.urls]

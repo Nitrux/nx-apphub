@@ -34,6 +34,7 @@ setup(
         "pyyaml",
         "tqdm",
         "python-debian",
+        "pyelftools",
     ],
     entry_points={
         "console_scripts": [
