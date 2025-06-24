@@ -47,6 +47,8 @@ def generate_apprun(app_dir, config):
     # -- Conditionally add initialization for Qt environment variables **only if they exist in envvars**.
 
     qt_env_init = ""
+    if "QT_QPA_PLATFORM" in envvars:
+        qt_env_init += 'if [ -z "${QT_QPA_PLATFORM+x}" ]; then export QT_QPA_PLATFORM=""; fi\n'
     if "QT_PLUGIN_PATH" in envvars:
         qt_env_init += 'if [ -z "${QT_PLUGIN_PATH+x}" ]; then export QT_PLUGIN_PATH=""; fi\n'
     if "QT_QML_IMPORT_PATH" in envvars:
