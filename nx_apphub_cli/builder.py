@@ -390,7 +390,7 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error: AppImage build failed! {e}")
+        print(f"\n❌ Error: AppImage build failed! {e}")
         cleanup_cache(app_name)
         exit(1)
 
@@ -471,7 +471,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     # -- Generate metadata & AppRun.
 
-    print(f"📌 Setting up AppRun and metadata for: {app_name}...")
+    print(f"🔧 Setting up AppRun and metadata for: {app_name}...")
     print()
     generate_apprun(app_dir, config)
 
