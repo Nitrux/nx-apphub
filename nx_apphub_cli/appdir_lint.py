@@ -106,44 +106,53 @@ def is_valid_appdir(appdir_path):
     return True
 
 
-import re
-
 def suggest_providing_packages(missing_libs, repos):
     suggestions = {}
     seen_contents = set()
 
     if isinstance(repos, dict):
-        base_repos = repos.get('base', [])
-        ppa_repos = repos.get('ppas', [])
+        base_repos = repos.get("base", [])
+        ppa_repos = repos.get("ppas", [])
         repos = base_repos + ppa_repos
 
-    lib_patterns = {lib: re.compile(rf"{re.escape(lib)}(\.|\s|$)") for lib in missing_libs}
+    lib_patterns = {lib: re.compile(rf"/{re.escape(lib)}(\s|$)") for lib in missing_libs}
+
+    known_mirrors = {
+        "debian": [
+            "https://ftp.debian.org/debian",
+            "https://uk.mirrors.clouvider.net/debian",
+            "https://atl.mirrors.clouvider.net/debian",
+        ],
+        "ubuntu": [
+            "https://archive.ubuntu.com/ubuntu",
+            "https://security.ubuntu.com/ubuntu",
+            "https://mirrors.edge.kernel.org/ubuntu/ubuntu",
+        ],
+        "ubuntu-ports": [
+            "https://ports.ubuntu.com/ubuntu-ports",
+        ],
+        "devuan": [
+            "http://deb.devuan.org/merged",
+        ],
+        "kde-neon": [
+            "https://origin.archive.neon.kde.org/stable",
+        ],
+        # nitrux is intentionally excluded — it has no Contents files
+    }
 
     for repo in repos:
-        distro = repo.get('distro', '').lower()
-        release = repo.get('release')
-        arch = repo.get('arch')
-        components = repo.get('components', ['main'])
+        distro = repo.get("distro", "").lower()
+        release = repo.get("release")
+        arch = repo.get("arch")
+        components = repo.get("components", ["main"])
 
         if not (distro and release and arch):
             continue
 
-        if distro == 'debian':
-            mirrors = ["http://deb.debian.org/debian"]
-        elif distro == 'ubuntu':
-            mirrors = ["http://archive.ubuntu.com/ubuntu"]
-        elif distro == 'ubuntu-ports':
-            mirrors = ["http://ports.ubuntu.com"]
-        elif distro == 'devuan':
-            mirrors = ["http://deb.devuan.org/merged"]
-        elif distro == 'kde-neon':
-            mirrors = ["http://archive.neon.kde.org/stable"]
-        elif distro == 'nitrux':
-            mirrors = ["https://repo.nxos.org/nitrux"]
-        else:
+        if distro not in known_mirrors:
             continue
 
-        for mirror in mirrors:
+        for mirror in known_mirrors[distro]:
             for component in components:
                 contents_url = f"{mirror}/dists/{release}/{component}/Contents-{arch}.gz"
 
@@ -188,7 +197,7 @@ def run_linter(args=None):
         print(f"\n❌ Invalid or incomplete AppDir: {appdir_path}\n")
         return
 
-    print(f"\n🔍 Scanning AppDir: {appdir_path}\n")
+    print(f"🔍 Scanning AppDir: {appdir_path}\n")
     missing = find_missing_libs(appdir_path)
 
     if not missing:
@@ -204,7 +213,6 @@ def run_linter(args=None):
 
     # -- Load YAML config to retrieve repositories.
 
-    import yaml
     yaml_path = args.yaml if hasattr(args, "yaml") else None
     if not yaml_path or not os.path.isfile(yaml_path):
         print("⚠️  No YAML config provided. Skipping package suggestions.\n")
