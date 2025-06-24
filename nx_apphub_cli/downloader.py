@@ -42,7 +42,6 @@ cache_dir = Path.home() / ".cache/nx-apphub-cli"
 # -- Mirors for supported distributions.
 
 debian_mirrors = [
-    "https://deb.debian.org/debian",
     "https://ftp.debian.org/debian",
     "https://uk.mirrors.clouvider.net/debian",
     "https://atl.mirrors.clouvider.net/debian",
@@ -64,7 +63,7 @@ devuan_mirrors = [
 ]
 
 kde_neon_mirrors = [
-    "https://archive.neon.kde.org/stable",
+    "https://origin.archive.neon.kde.org/stable/",
 ]
 
 nitrux_mirrors = [
