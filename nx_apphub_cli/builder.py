@@ -391,9 +391,8 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error: AppImage build failed! {e}\n")
+        print(f"❌ Error: AppImage build failed! {e}")
         cleanup_cache(app_name)
-        print()
         exit(1)
 
 
@@ -405,9 +404,8 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     binary_path = config["buildinfo"].get("binarypath")
 
     if not binary_path:
-        print(f"❌ Error: No binary path specified for {app_name}. Aborting.\n")
+        print(f"❌ Error: No binary path specified for {app_name}. Aborting.")
         cleanup_cache(app_name)
-        print()
         sys.exit(1)
 
     # -- Ensure AppDir is properly set up before running any commands.
@@ -415,9 +413,8 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
     if not extracted_binary_path.exists():
-        print(f"❌ Error: Binary {extracted_binary_path} not found! AppImage might fail.\n")
+        print(f"❌ Error: Binary {extracted_binary_path} not found! AppImage might fail.")
         cleanup_cache(app_name)
-        print()
         sys.exit(1)
 
     # -- Run prebuild commands inside the AppDir.
@@ -459,7 +456,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     elif runtime == "uruntime":
         appimagetool_binary = get_uruntime(quiet=quiet)
     else:
-        print(f"❌ Error: Unknown runtime '{runtime}' specified in buildinfo.\n")
+        print(f"❌ Error: Unknown runtime '{runtime}' specified in buildinfo.")
         cleanup_cache(app_name)
         sys.exit(1)
 
@@ -488,9 +485,8 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     if integration_type == "wm":
         wm_launcher = prepare_window_manager_launcher(app_dir)
         if not wm_launcher:
-            print("❌ Error: No session launcher (.desktop) found in Wayland/X11 session directories.\n")
+            print("❌ Error: No session launcher (.desktop) found in Wayland/X11 session directories.")
             cleanup_cache(app_name)
-            print()
             sys.exit(1)
     else:
         fix_desktop_entry(app_name, app_dir, new_binary_path, hide_from_menu=hide_from_menu)

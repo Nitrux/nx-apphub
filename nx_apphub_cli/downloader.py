@@ -195,7 +195,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     if not candidates:
         print()
         cleanup_cache(package_name)
-        raise RuntimeError(f"\n❌ Error: Package '{pkg_name}' could not be found in any repository.\n")
+        raise RuntimeError(f"❌ Error: Package '{pkg_name}' could not be found in any repository.")
 
     candidates.sort(key=lambda c: c["version"], reverse=True)
     best = candidates[0]

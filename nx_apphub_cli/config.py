@@ -143,17 +143,26 @@ def validate_yaml_config(config):
         arches = set()
         for entry in distrorepo:
             arch = entry.get("arch")
+            distro = entry.get("distro")
+
             if not arch:
                 print("❌ Error: Missing 'arch' key in distrorepo entry.\n")
                 sys.exit(1)
-            arches.add(arch)
-            distro = entry.get("distro")
+
+            if not distro:
+                print("❌ Error: Missing 'distro' key in distrorepo entry.\n")
+                sys.exit(1)
+
             if distro == "ubuntu" and arch != "amd64":
                 print("❌ Error: 'distrorepo.arch' for 'ubuntu' must be: amd64.\n")
                 sys.exit(1)
-            if distro == "ubuntu" and arch != "arm64":
-                print("❌ Error: 'distrorepo.arch' for 'ubuntu-ports' must be: arm64.\n")
+
+            if distro == "ubuntu-ports" and arch not in ("arm64", "riscv64"):
+                print("❌ Error: 'distrorepo.arch' for 'ubuntu-ports' must be: arm64 or riscv64.\n")
                 sys.exit(1)
+
+            arches.add(arch)
+
         if len(arches) > 1:
             print("❌ Error: 'distrorepo.arch' must not have mixed architectures.\n")
             sys.exit(1)
