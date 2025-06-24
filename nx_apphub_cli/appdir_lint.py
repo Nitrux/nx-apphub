@@ -23,11 +23,15 @@
 #############################################################################################################################################################################
 
 import os
+import sys
 import subprocess
-import argparse
-from pathlib import Path
 import gzip
-import urllib.request
+from io import BytesIO
+from pathlib import Path
+import requests
+import yaml
+import re
+from elftools.elf.elffile import ELFFile
 
 
 def detect_appdir(path):
@@ -102,6 +106,69 @@ def is_valid_appdir(appdir_path):
     return True
 
 
+import re
+
+def suggest_providing_packages(missing_libs, repos):
+    suggestions = {}
+    seen_contents = set()
+
+    if isinstance(repos, dict):
+        base_repos = repos.get('base', [])
+        ppa_repos = repos.get('ppas', [])
+        repos = base_repos + ppa_repos
+
+    lib_patterns = {lib: re.compile(rf"{re.escape(lib)}(\.|\s|$)") for lib in missing_libs}
+
+    for repo in repos:
+        distro = repo.get('distro', '').lower()
+        release = repo.get('release')
+        arch = repo.get('arch')
+        components = repo.get('components', ['main'])
+
+        if not (distro and release and arch):
+            continue
+
+        if distro == 'debian':
+            mirrors = ["http://deb.debian.org/debian"]
+        elif distro == 'ubuntu':
+            mirrors = ["http://archive.ubuntu.com/ubuntu"]
+        elif distro == 'ubuntu-ports':
+            mirrors = ["http://ports.ubuntu.com"]
+        elif distro == 'devuan':
+            mirrors = ["http://deb.devuan.org/merged"]
+        elif distro == 'kde-neon':
+            mirrors = ["http://archive.neon.kde.org/stable"]
+        elif distro == 'nitrux':
+            mirrors = ["https://repo.nxos.org/nitrux"]
+        else:
+            continue
+
+        for mirror in mirrors:
+            for component in components:
+                contents_url = f"{mirror}/dists/{release}/{component}/Contents-{arch}.gz"
+
+                if contents_url in seen_contents:
+                    continue
+                seen_contents.add(contents_url)
+
+                try:
+                    response = requests.get(contents_url, timeout=15)
+                    response.raise_for_status()
+                    with gzip.open(BytesIO(response.content), 'rt', encoding='utf-8', errors='ignore') as f:
+                        for line in f:
+                            parts = line.strip().rsplit(None, 1)
+                            if len(parts) != 2:
+                                continue
+                            path, pkg = parts
+                            for lib, pattern in lib_patterns.items():
+                                if pattern.search(path):
+                                    suggestions.setdefault(lib, set()).add(pkg)
+                except Exception:
+                    continue
+
+    return suggestions
+
+
 def run_linter(args=None):
     if args is None:
         parser = argparse.ArgumentParser(description="Check missing shared libraries in an AppDir.")
@@ -134,3 +201,28 @@ def run_linter(args=None):
         for src in sorted(set(sources)):
             print(f"  ↪ {src}")
         print()
+
+    # -- Load YAML config to retrieve repositories.
+
+    import yaml
+    yaml_path = args.yaml if hasattr(args, "yaml") else None
+    if not yaml_path or not os.path.isfile(yaml_path):
+        print("⚠️  No YAML config provided. Skipping package suggestions.\n")
+        return
+
+    with open(yaml_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    repos = config.get("buildinfo", {}).get("distrorepo", [])
+    if isinstance(repos, dict):
+        repos = repos.get("base", [])
+
+    print("💡 Suggesting Debian packages that may provide the missing libraries...\n")
+    suggestions = suggest_providing_packages(missing.keys(), repos)
+    for lib in missing:
+        pkgs = suggestions.get(lib)
+        if pkgs:
+            print(f"   ➤ {lib}: suggested packages → {', '.join(sorted(pkgs))}")
+        else:
+            print(f"   ➤ {lib}: no suggestion found")
+    print()

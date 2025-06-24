@@ -253,9 +253,7 @@ def main():
 
                 lint_args = types.SimpleNamespace(
                     appdir=str(lint_target),
-                    distro=lint_meta.get("distro"),
-                    release=lint_meta.get("release"),
-                    components=lint_meta.get("components")
+                    yaml=args.config
                 )
 
                 try:
