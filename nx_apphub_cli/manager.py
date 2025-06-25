@@ -37,11 +37,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
 
-from .downloader import get_latest_deb
+from .downloader import get_latest_deb, fetch_package_metadata
 from .extractor import extract_deb
 from .builder import prepare_appimage
 from .config import load_yaml_config
 from .utils import cleanup_cache
+
 
 
 # -- Ensure directories exist.
@@ -52,6 +53,12 @@ repo_dir = repo_base_dir / "apps"
 backup_dir = repo_base_dir / "backups"
 install_dir = Path.home() / ".local/bin/nx-apphub"
 git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
+debian_mirrors = ["https://ftp.debian.org/debian"]
+ubuntu_mirrors = ["https://archive.ubuntu.com/ubuntu"]
+ubuntu_ports_mirrors = ["https://ports.ubuntu.com/ubuntu-ports"]
+devuan_mirrors = ["http://deb.devuan.org/merged"]
+kde_neon_mirrors = ["https://origin.archive.neon.kde.org/stable"]
+nitrux_mirrors = []  # Should not be used, as Contents file is not provided
 
 
 # -- Create all necessary directories.
@@ -72,35 +79,60 @@ def install(app_names):
     # -- Ensure the repository is valid.
 
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
-        print(f"⚠️ Warning: {repo_base_dir} is not a valid Git repository. Removing...")
+        print(f"🚨️ Warning: {repo_base_dir} is not a valid Git repository. Removing...")
         print()
         shutil.rmtree(repo_base_dir)
 
-    # -- If repo is valid and non-empty, update it.
+    # -- If repo is valid and non-empty, try updating it.
 
     if (repo_base_dir / ".git").exists() and any(repo_dir.glob("*")):
         try:
-            subprocess.run(
-                ["git", "-C", str(repo_base_dir), "pull"],
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            # Allow untracked files like firejail.d/
+            status_result = subprocess.run(
+                ["git", "-C", str(repo_base_dir), "status", "--porcelain"],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
-            print("🔄 Applications repository updated.\n")
-        except subprocess.CalledProcessError:
-            print("⚠️ Warning: Failed to update repository. Continuing with existing version.\n")
+            untracked = []
+            for line in status_result.stdout.splitlines():
+                if line.startswith("??"):
+                    path = line[3:]
+                    if not path.startswith("firejail.d/"):  # whitelist
+                        untracked.append(path)
 
-    if not any(repo_dir.glob("*")):
-        print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
-        try:
-            subprocess.run(
-                ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            if untracked:
+                print(f"🚨 Warning: Repository has untracked files: {', '.join(untracked)}")
+                print(" 🔹 Ignoring known safe changes (e.g., firejail.d/) if present.\n")
+
+            # Perform the pull
+            pull_result = subprocess.run(
+                ["git", "-C", str(repo_base_dir), "pull"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
-        except subprocess.CalledProcessError:
-            print("❌ Error: Failed to clone app repository.")
-            sys.exit(1)
+
+            if pull_result.returncode == 0:
+                print("🔄 Applications repository updated.\n")
+            else:
+                print(f"🚨 Warning: Failed to update repository. Continuing with the existing version.\n")
+
         except Exception as e:
-            print(f"❌ Error: Unexpected failure during clone: {e}")
-            sys.exit(1)
+            print(f"🚨 Warning: Git update check failed ({e}). Continuing...\n")
+
+
+        if not any(repo_dir.glob("*")):
+            print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
+            try:
+                subprocess.run(
+                    ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
+                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+            except subprocess.CalledProcessError:
+                print("❌ Error: Failed to clone app repository. Try again.")
+                print()
+                sys.exit(1)
+            except Exception as e:
+                print(f"❌ Error: Unexpected failure during clone: {e}")
+                print()
+                sys.exit(1)
 
     for app_name in app_names:
 
@@ -179,8 +211,6 @@ def install(app_names):
 
             # -- Prefetch metadata for all mirrors before starting parallel downloads.
 
-            from nx_apphub_cli.downloader import fetch_package_metadata
-
             prefetch_targets = set()
 
             for pkg_name, repo_list in download_tasks:
@@ -215,7 +245,6 @@ def install(app_names):
             # -- Start progress bar manually.
 
             terminal_width = get_terminal_size((80, 20)).columns
-            from concurrent.futures import ThreadPoolExecutor, as_completed
 
             with tqdm(
                 total=len(download_tasks),
@@ -223,24 +252,17 @@ def install(app_names):
                 unit="pkg",
                 ncols=terminal_width,
                 dynamic_ncols=False,
-                bar_format="{l_bar}{bar}| {remaining:>8} • {rate_fmt:<14}"
-            ) as progress:
+                bar_format="{desc} {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} • {rate_fmt:<14}",
+                leave=True) as progress:
 
-                with ThreadPoolExecutor(max_workers=4) as executor:
+                with ThreadPoolExecutor(max_workers=12) as executor:
                     futures = {
                         executor.submit(get_latest_deb, pkg_name, repo_list, app_name): pkg_name
                         for pkg_name, repo_list in download_tasks
                     }
 
-                    first = True
-
                     for future in as_completed(futures):
                         pkg_name = futures[future]
-
-                        if first:
-                            sys.stdout.write("\n\n")
-                            sys.stdout.flush()
-                            first = False
 
                         try:
                             deb_path = future.result()
@@ -258,7 +280,7 @@ def install(app_names):
 
         # -- Build AppImage.
 
-        print("\n🛠  Building AppImage...\n")
+        print("\n🛠  Building AppBox...\n")
         prepare_appimage(config, install_mode=True)
 
         # -- Verify new AppBox exists before final confirmation.
@@ -269,7 +291,7 @@ def install(app_names):
             cleanup_cache(app_name)
             return
 
-        print(f"\n✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
+        print(f"✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
 
     print("🎉 All requested applications have been processed!\n")
 
@@ -441,7 +463,7 @@ def update(app_names):
         try:
             installed_app.chmod(0o644)
         except OSError as e:
-            print(f"⚠️ Warning: Failed to modify permissions of {installed_app}. Reason: {e}")
+            print(f"🚨️ Warning: Failed to modify permissions of {installed_app}. Reason: {e}")
 
         # -- Create backup safely.
 
@@ -526,7 +548,7 @@ def downgrade(app_names):
             if choice.isdigit() and 1 <= int(choice) <= len(backups):
                 index = int(choice) - 1
                 break
-            print("\n    ⚠️ Invalid selection. Please enter a valid number.")
+            print("\n    ⛔ Invalid selection. Please enter a valid number.")
 
         selected_backup = backups[index]
 
@@ -564,7 +586,7 @@ def downgrade(app_names):
                     try:
                         newer_version.unlink()
                     except OSError as e:
-                        print(f"⚠️ Warning: Failed to remove newer version {newer_version}. Reason: {e}")
+                        print(f"🚨️ Warning: Failed to remove newer version {newer_version}. Reason: {e}")
 
         except (tarfile.TarError, OSError) as e:
             print(f"❌ Error: Could not restore {app_name} from backup. Reason: {e}")
