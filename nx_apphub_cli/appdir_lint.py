@@ -106,7 +106,7 @@ def is_valid_appdir(appdir_path):
     return True
 
 
-def suggest_providing_packages(missing_libs, repos, quiet=False):
+def suggest_providing_packages(missing_libs, repos, quiet=True):
     suggestions = {}
     seen_urls = set()
 
@@ -164,14 +164,14 @@ def suggest_providing_packages(missing_libs, repos, quiet=False):
                 seen_urls.add(url)
 
                 if not quiet:
-                    print(f"\n📥 Downloading: {url}")
+                    print(f"📥 Downloading: {url}")
 
                 try:
                     response = requests.get(url, timeout=20)
                     response.raise_for_status()
 
                     if not quiet:
-                        print(f"\n📑 Parsing: {url}")
+                        print(f"📑 Parsing: {url}\n")
 
                     with gzip.open(BytesIO(response.content), 'rt', encoding='utf-8', errors='ignore') as f:
                         for line in f:
@@ -187,6 +187,8 @@ def suggest_providing_packages(missing_libs, repos, quiet=False):
                                     if not quiet:
                                         print(f"✅ Matched {lib} → {pkg} in {url}")
                                     suggestions.setdefault(lib, set()).add(pkg)
+                    if not quiet:
+                        print()
                 except Exception as e:
                     if not quiet:
                         print(f"⚠️  Failed to process {url}: {e}")
@@ -214,7 +216,7 @@ def run_linter(args=None):
         print(f"\n❌ Invalid or incomplete AppDir: {appdir_path}\n")
         return
 
-    print(f"🔍 Scanning AppDir: {appdir_path}\n")
+    print(f"\n🔍 Scanning AppDir: {appdir_path}\n")
     missing = find_missing_libs(appdir_path)
 
     if not missing:
