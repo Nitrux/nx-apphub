@@ -321,7 +321,7 @@ def patch_binary_rpath(binary_path, config):
             ["patchelf", "--set-rpath", rpath_value, "--force-rpath", binary_path],
             check=True
         )
-        print(f"✔️ Patched RPATH for: {binary_path}")
+        print(f"🩹 Patched RPATH for: {binary_path}")
     except subprocess.CalledProcessError as e:
         print(f"❌ Error: Failed to patch RPATH for {binary_path}: {e}")
 
@@ -471,7 +471,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     # -- Generate metadata & AppRun.
 
-    print(f"🔧 Setting up AppRun and metadata for: {app_name}...")
+    print(f"🗂️ Setting up AppRun and metadata for: {app_name}...")
     print()
     generate_apprun(app_dir, config)
 

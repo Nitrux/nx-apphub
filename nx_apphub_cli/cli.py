@@ -205,7 +205,7 @@ def main():
             print("✅ AppImage creation complete!\n")
 
             if args.appdir_lint:
-                print(f"🧪 Running appdir-lint on: {args.appdir_lint}")
+                print(f"🩺 Running AppDir linter on: {args.appdir_lint}")
                 print()
 
                 app_name = config["buildinfo"]["name"]
