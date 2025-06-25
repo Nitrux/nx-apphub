@@ -185,7 +185,7 @@ def validate_yaml_config(config):
             if profile != "none":
                 known_profiles = get_known_apparmor_profiles()
                 if profile not in known_profiles:
-                    print(f"⚠️ Warning: aa_profile '{profile}' does not match any profile in /etc/apparmor.d/")
+                    print(f"🚨 Warning: aa_profile '{profile}' does not match any profile in /etc/apparmor.d/")
                     print("\n   👉 To fix this, create or rename the profile file or set 'aa_profile: none'.\n")
 
         for key in sandbox.keys():

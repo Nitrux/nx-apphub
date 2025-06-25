@@ -328,7 +328,7 @@ def patch_binary_rpath(binary_path, config):
 
 def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, config, quiet=True):
     if not quiet:
-        print(f"\n🛠  Building AppImage: {output_file} ...")
+        print(f"\n🛠  Packaging AppDir: {output_file} ...")
 
     try:
         env = os.environ.copy()

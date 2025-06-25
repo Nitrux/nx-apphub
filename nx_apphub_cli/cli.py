@@ -230,7 +230,7 @@ def main():
                             stderr=subprocess.DEVNULL
                         )
                     except PermissionError:
-                        print(f"\n⚠️ Warning: AppImage '{appimage_path.name}' is not executable. Attempting to fix permissions...")
+                        print(f"\n🚨 Warning: AppImage '{appimage_path.name}' is not executable. Attempting to fix permissions...")
                         try:
                             appimage_path.chmod(0o755)
                             subprocess.run(

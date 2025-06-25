@@ -213,7 +213,7 @@ def run_linter(args=None):
         appdir_path = resolved
 
     if not is_valid_appdir(appdir_path):
-        print(f"\n❌ Invalid or incomplete AppDir: {appdir_path}\n")
+        print(f"\n⛔ Invalid or incomplete AppDir: {appdir_path}\n")
         return
 
     print(f"\n🔍 Scanning AppDir: {appdir_path}\n")
