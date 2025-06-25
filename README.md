@@ -28,7 +28,7 @@ file
 firejail
 fuse3
 git
-libfuse2t64
+libfuse2t64 || libfuse2
 patchelf
 zstd
 ```
