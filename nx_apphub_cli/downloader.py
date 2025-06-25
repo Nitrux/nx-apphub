@@ -76,6 +76,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name by probing all mirrors concurrently."""
 
     excluded_packages = {
+        "dbus-user-session",
         "libc6",
         "libdrm2",
         "libegl-mesa0",
@@ -93,12 +94,17 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         "libglx0",
         "libopengl0",
         "libstdc++6",
+        "libsystemd0",
+        "libsystemd-shared",
         "libwayland-client0",
         "libwayland-cursor0",
         "libwayland-egl1",
         "libwayland-server0",
         "mesa-libgallium",
-        "mesa-vulkan-drivers"
+        "mesa-vulkan-drivers",
+        "sudo",
+        "systemd",
+        "systemd-sysv"
     }
 
     if pkg_name in excluded_packages:
