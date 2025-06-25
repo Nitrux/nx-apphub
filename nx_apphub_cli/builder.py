@@ -471,7 +471,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     # -- Generate metadata & AppRun.
 
-    print(f"🗂️ Setting up AppRun and metadata for: {app_name}...")
+    print(f"🧳 Generating AppRun and metadata for: {app_name}...")
     print()
     generate_apprun(app_dir, config)
 
