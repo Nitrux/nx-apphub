@@ -261,6 +261,8 @@ def install(app_names):
                         for pkg_name, repo_list in download_tasks
                     }
 
+                    error_occurred = False
+
                     for future in as_completed(futures):
                         pkg_name = futures[future]
 
@@ -274,7 +276,11 @@ def install(app_names):
                             progress.close()
                             return
                         progress.update(1)
-
+                    
+                    if error_occurred:
+                        cleanup_cache(app_name)
+                        print(f"\n❌ One or more dependencies failed to download for {app_name}. Aborting installation.\n")
+                        return 
         else:
             print("📦 No dependencies listed.")
 

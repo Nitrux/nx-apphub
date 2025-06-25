@@ -72,7 +72,7 @@ nitrux_mirrors = [
 ]
 
 
-def get_latest_deb(pkg_name, repos, package_name, quiet=True):
+def get_latest_deb(pkg_name, repos, package_name, quiet=False):
     """Download the latest .deb package for the given pkg_name by probing all mirrors concurrently."""
 
     excluded_packages = {
@@ -90,6 +90,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         "libgles2",
         "libglib2.0-0",
         "libglib2.0-0t64",
+        "libglib2.0-bin",
         "libglx-mesa0",
         "libglx0",
         "libopengl0",
@@ -200,7 +201,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     if not candidates:
         print()
         cleanup_cache(package_name)
-        raise RuntimeError(f"❌ Error: Package '{pkg_name}' could not be found in any repository.")
+        raise RuntimeError(f"❌ Error: Package '{pkg_name}' could not be found in any repository after probing {len(probe_tasks)} mirror/component pairs.")
 
     candidates.sort(key=lambda c: c["version"], reverse=True)
     best = candidates[0]
@@ -255,7 +256,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
         return None, f"❌ Error: Failed to fetch metadata from: {packages_url}: {e}"
 
 
-def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
+def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=False):
     ppa = repo["ppa"].strip()
     if not ppa or "/" not in ppa:
         print(f"❌ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
@@ -284,7 +285,7 @@ def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
     return None
 
 
-def download_file(url, destination, quiet=True):
+def download_file(url, destination, quiet=False):
     try:
         response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
@@ -300,9 +301,7 @@ def download_file(url, destination, quiet=True):
         return destination
 
     except requests.RequestException as e:
-        if not quiet:
-            print(f"        ❌ Download failed: {e}")
-        return None
+        raise RuntimeError(f"⛔ Download failed for {url}:\n    {e}")
 
 
 def print_grouped_logs(logs):
