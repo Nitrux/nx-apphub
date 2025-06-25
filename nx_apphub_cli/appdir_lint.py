@@ -244,7 +244,7 @@ def run_linter(args=None):
     if isinstance(repos, dict):
         repos = repos.get("base", [])
 
-    print("💡 Suggesting Debian packages that may provide the missing libraries...")
+    print("💡 Suggesting Debian packages that may provide the missing libraries...\n")
     suggestions = suggest_providing_packages(missing.keys(), repos)
     for lib in missing:
         pkgs = suggestions.get(lib)
