@@ -106,39 +106,16 @@ def is_valid_appdir(appdir_path):
     return True
 
 
-def suggest_providing_packages(missing_libs, repos):
+def suggest_providing_packages(missing_libs, repos, quiet=False):
     suggestions = {}
-    seen_contents = set()
+    seen_urls = set()
+
+    lib_patterns = {
+        lib: re.compile(rf"{re.escape(lib)}(\s|$)") for lib in missing_libs
+    }
 
     if isinstance(repos, dict):
-        base_repos = repos.get("base", [])
-        ppa_repos = repos.get("ppas", [])
-        repos = base_repos + ppa_repos
-
-    lib_patterns = {lib: re.compile(rf"/{re.escape(lib)}(\s|$)") for lib in missing_libs}
-
-    known_mirrors = {
-        "debian": [
-            "https://ftp.debian.org/debian",
-            "https://uk.mirrors.clouvider.net/debian",
-            "https://atl.mirrors.clouvider.net/debian",
-        ],
-        "ubuntu": [
-            "https://archive.ubuntu.com/ubuntu",
-            "https://security.ubuntu.com/ubuntu",
-            "https://mirrors.edge.kernel.org/ubuntu/ubuntu",
-        ],
-        "ubuntu-ports": [
-            "https://ports.ubuntu.com/ubuntu-ports",
-        ],
-        "devuan": [
-            "http://deb.devuan.org/merged",
-        ],
-        "kde-neon": [
-            "https://origin.archive.neon.kde.org/stable",
-        ],
-        # nitrux is intentionally excluded — it has no Contents files
-    }
+        repos = repos.get('base', []) + repos.get('ppas', [])
 
     for repo in repos:
         distro = repo.get("distro", "").lower()
@@ -147,35 +124,75 @@ def suggest_providing_packages(missing_libs, repos):
         components = repo.get("components", ["main"])
 
         if not (distro and release and arch):
+            if not quiet:
+                print(f"⚠️  Skipping invalid repo definition: {repo}")
             continue
 
-        if distro not in known_mirrors:
+        if distro == "debian":
+            mirrors = ["https://ftp.debian.org/debian"]
+            subpath = "dists"
+        elif distro == "ubuntu":
+            mirrors = ["https://archive.ubuntu.com/ubuntu"]
+            subpath = "dists"
+        elif distro == "ubuntu-ports":
+            mirrors = ["https://ports.ubuntu.com/ubuntu-ports"]
+            subpath = "dists"
+        elif distro == "devuan":
+            mirrors = ["http://deb.devuan.org/merged"]
+            subpath = "dists"
+        elif distro == "kde-neon":
+            mirrors = ["https://origin.archive.neon.kde.org/stable"]
+            subpath = "dists"
+        elif distro == "nitrux":
+            if not quiet:
+                print("⏩ Skipping Nitrux repository (no Contents file provided).")
+            continue
+        else:
+            if not quiet:
+                print(f"⏩ Unknown distro '{distro}', skipping.")
             continue
 
-        for mirror in known_mirrors[distro]:
+        for mirror in mirrors:
             for component in components:
-                contents_url = f"{mirror}/dists/{release}/{component}/Contents-{arch}.gz"
+                if distro in ("debian", "devuan"):
+                    url = f"{mirror}/{subpath}/{release}/{component}/Contents-{arch}.gz"
+                else:
+                    url = f"{mirror}/{subpath}/{release}/Contents-{arch}.gz"
 
-                if contents_url in seen_contents:
+                if url in seen_urls:
                     continue
-                seen_contents.add(contents_url)
+                seen_urls.add(url)
+
+                if not quiet:
+                    print(f"\n📥 Downloading: {url}")
 
                 try:
-                    response = requests.get(contents_url, timeout=15)
+                    response = requests.get(url, timeout=20)
                     response.raise_for_status()
+
+                    if not quiet:
+                        print(f"\n📑 Parsing: {url}")
+
                     with gzip.open(BytesIO(response.content), 'rt', encoding='utf-8', errors='ignore') as f:
                         for line in f:
-                            parts = line.strip().rsplit(None, 1)
+                            line = line.strip()
+                            if not line:
+                                continue
+                            parts = line.rsplit(None, 1)
                             if len(parts) != 2:
                                 continue
                             path, pkg = parts
                             for lib, pattern in lib_patterns.items():
                                 if pattern.search(path):
+                                    if not quiet:
+                                        print(f"✅ Matched {lib} → {pkg} in {url}")
                                     suggestions.setdefault(lib, set()).add(pkg)
-                except Exception:
+                except Exception as e:
+                    if not quiet:
+                        print(f"⚠️  Failed to process {url}: {e}")
                     continue
 
-    return suggestions
+    return {lib: sorted(set(pkgs)) for lib, pkgs in suggestions.items()}
 
 
 def run_linter(args=None):
@@ -225,7 +242,7 @@ def run_linter(args=None):
     if isinstance(repos, dict):
         repos = repos.get("base", [])
 
-    print("💡 Suggesting Debian packages that may provide the missing libraries...\n")
+    print("💡 Suggesting Debian packages that may provide the missing libraries...")
     suggestions = suggest_providing_packages(missing.keys(), repos)
     for lib in missing:
         pkgs = suggestions.get(lib)
