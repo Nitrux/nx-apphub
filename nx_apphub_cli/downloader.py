@@ -72,7 +72,7 @@ nitrux_mirrors = [
 ]
 
 
-def get_latest_deb(pkg_name, repos, package_name, quiet=False):
+def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     """Download the latest .deb package for the given pkg_name by probing all mirrors concurrently."""
 
     excluded_packages = {
@@ -256,7 +256,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
         return None, f"❌ Error: Failed to fetch metadata from: {packages_url}: {e}"
 
 
-def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=False):
+def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
     ppa = repo["ppa"].strip()
     if not ppa or "/" not in ppa:
         print(f"❌ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
@@ -285,7 +285,7 @@ def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=False):
     return None
 
 
-def download_file(url, destination, quiet=False):
+def download_file(url, destination, quiet=True):
     try:
         response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
