@@ -63,6 +63,8 @@ def generate_apprun(app_dir, config):
             qt_env_init += 'if [ -z "${QTWEBENGINE_RESOURCES_PATH+x}" ]; then export QTWEBENGINE_RESOURCES_PATH=""; fi\n'
     if "QTWEBENGINE_LOCALES_PATH" in envvars:
             qt_env_init += 'if [ -z "${QTWEBENGINE_LOCALES_PATH+x}" ]; then export QTWEBENGINE_LOCALES_PATH=""; fi\n'
+    if "QT_QUICK_CONTROLS_STYLE" in envvars:
+            qt_env_init += 'if [ -z "${QT_QUICK_CONTROLS_STYLE+x}" ]; then export QT_QUICK_CONTROLS_STYLE=""; fi\n'
 
     # -- Determine multiarch triplet dynamically.
 
