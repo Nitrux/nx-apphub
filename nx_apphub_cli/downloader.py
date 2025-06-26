@@ -30,6 +30,7 @@ from debian import debian_support
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
+import urllib.parse
 
 from .utils import cleanup_cache
 
@@ -162,38 +163,30 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
                 probe_tasks.append((mirror, release, arch, pkg_name, component))
 
     candidates = []
+    mirror_logs = []
 
     if not quiet:
         print()
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {
-            executor.submit(fetch_package_metadata, mirror, release, arch, pkg_name, component): (mirror, component)
-            for (mirror, release, arch, pkg_name, component) in probe_tasks
-        }
-
-        mirror_logs = []
-
-        for future in as_completed(futures):
-            mirror, component = futures[future]
-            try:
-                result, status_msg = future.result()
-                if result:
-                    filename, version_str = result
-                    version = debian_support.Version(version_str)
-                    deb_url = f"{mirror}/{filename}"
-                    candidates.append({
-                        "version": version,
-                        "version_str": version_str,
-                        "url": deb_url,
-                        "path": deb_dir / f"{pkg_name}.deb",
-                        "source": f"{mirror} [{component}]"
-                    })
-                elif status_msg and not quiet:
-                    mirror_logs.append(f"        {status_msg}")
-            except Exception as e:
-                if not quiet:
-                    mirror_logs.append(f"        ⚠️ Unhandled error for {pkg_name} from {mirror} [{component}]: {e}")
+    for mirror, release, arch, pkg_name, component in probe_tasks:
+        try:
+            result, status_msg = fetch_package_metadata(mirror, release, arch, pkg_name, component)
+            if result:
+                filename, version_str = result
+                version = debian_support.Version(version_str)
+                deb_url = f"{mirror}/{filename}"
+                candidates.append({
+                    "version": version,
+                    "version_str": version_str,
+                    "url": deb_url,
+                    "path": deb_dir / f"{pkg_name}.deb",
+                    "source": f"{mirror} [{component}]"
+                })
+            elif status_msg and not quiet:
+                mirror_logs.append(f"        {status_msg}")
+        except Exception as e:
+            if not quiet:
+                mirror_logs.append(f"        ⛔ Unhandled error for {pkg_name} from {mirror} [{component}]: {e}")
 
     if not quiet and mirror_logs:
         print_grouped_logs(mirror_logs)
@@ -213,7 +206,18 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         print(f"        🔹 Source:  {best['source']}\n")
         print(f"        📥 Downloading: {pkg_name} from: {best['url']}...\n")
 
-    return download_file(best["url"], best["path"], quiet=quiet)
+    download_errors = []
+
+    for candidate in candidates:
+        try:
+            return download_file(candidate["url"], candidate["path"], quiet=quiet)
+        except RuntimeError as e:
+            download_errors.append(f"        ⚠️ {pkg_name}: {e} ← {candidate['url']}")
+            continue
+
+    if not quiet:
+        print("\n".join(download_errors))
+    raise RuntimeError(f"⛔ All mirrors failed to download: {pkg_name}.")
 
 
 def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
@@ -253,7 +257,17 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
         return None, f"⛔ No metadata for: {pkg_name} from: {mirror} [{component}]"
 
     except requests.exceptions.RequestException as e:
-        return None, f"❌ Error: Failed to fetch metadata from: {packages_url}: {e}"
+        if isinstance(e, requests.exceptions.Timeout):
+            reason = "⌛ Timeout"
+        elif isinstance(e, requests.exceptions.ConnectionError):
+            reason = "🔌 Connection error"
+        elif isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
+            reason = f"HTTP {e.response.status_code}"
+        else:
+            reason = e.__class__.__name__
+
+        mirror_host = urllib.parse.urlparse(packages_url).hostname
+        return None, f"⭢ 🚧 Unable to fetch metadata from: {mirror_host}: {reason}"
 
 
 def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
@@ -300,8 +314,19 @@ def download_file(url, destination, quiet=True):
 
         return destination
 
-    except requests.RequestException as e:
-        raise RuntimeError(f"⛔ Download failed for {url}:\n    {e}")
+    except requests.exceptions.RequestException as e:
+        if isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
+            raise RuntimeError(f"🧾 HTTP {e.response.status_code}")
+        elif isinstance(e, requests.exceptions.SSLError):
+            raise RuntimeError("🔒 SSL error")
+        elif isinstance(e, requests.exceptions.Timeout):
+            raise RuntimeError("⌛ Timeout")
+        elif isinstance(e, requests.exceptions.ConnectionError):
+            if "NameResolutionError" in str(e):
+                raise RuntimeError("🌐 DNS resolution failed")
+            raise RuntimeError("🔌 Connection failed")
+        else:
+            raise RuntimeError(f"⚠️ {e.__class__.__name__}")
 
 
 def print_grouped_logs(logs):
