@@ -98,8 +98,6 @@ def get_icon_name_from_desktop(app_dir):
 def copy_system_icon(app_name, app_dir, config, icon_path, quiet=True):
     """Copy the icon referenced in the .desktop file to the root of AppDir with the correct name and extension."""
 
-    # -- Try to extract icon name from .desktop file.
-
     icon_name = get_icon_name_from_desktop(app_dir) or app_name
 
     if icon_path:
@@ -126,8 +124,12 @@ def copy_system_icon(app_name, app_dir, config, icon_path, quiet=True):
         shutil.copy(system_icon, icon_dest)
         if not quiet:
             print(f"✔️ Using icon from AppDir: {icon_dest.name}")
-    else:
-        raise FileNotFoundError(f"❌ Error: No system icon found for '{icon_name}'.")
+        return
+
+    raise FileNotFoundError(
+        f"❌ Error: No icon found for '{icon_name}'.\n"
+        "\n   👉 Tip: This usually happens when the icon theme is missing in the AppDir or build system."
+    )
 
 
 def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False):
@@ -489,8 +491,12 @@ def prepare_appimage(config, install_mode=False, quiet=True):
             sys.exit(1)
     else:
         fix_desktop_entry(app_name, app_dir, new_binary_path, hide_from_menu=hide_from_menu)
-
-    copy_system_icon(app_name, app_dir, config, config["buildinfo"].get("iconpath", None))
+    try:
+        copy_system_icon(app_name, app_dir, config, config["buildinfo"].get("iconpath", None))
+    except FileNotFoundError as e:
+        print(f"{e}")
+        cleanup_cache(app_name)
+        sys.exit(1)
 
     # -- Determine the final AppImage location.
 
