@@ -217,7 +217,7 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
 
     if not quiet:
         print("\n".join(download_errors))
-    raise RuntimeError(f"⛔ All mirrors failed to download: {pkg_name}.")
+    raise RuntimeError(f"\n⛔ All mirrors failed to download: {pkg_name}.")
 
 
 def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
