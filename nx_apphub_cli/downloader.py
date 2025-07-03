@@ -25,12 +25,13 @@
 import gzip
 import re
 import sys
+import urllib.parse
 from pathlib import Path
-from debian import debian_support
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
-import urllib.parse
+from debian import debian_support
+from tqdm import tqdm
+from threading import Lock
 
 from .utils import cleanup_cache
 
@@ -69,11 +70,53 @@ kde_neon_mirrors = [
 
 nitrux_mirrors = [
     "https://packagecloud.io/nitrux/mauikit/debian",
-    "https://packagecloud.io/nitrux/depot/debian",
+]
+
+zbkit_mirrors = [
+    "https://packagecloud.io/nitrux/zbkit/debian",
 ]
 
 
-def get_latest_deb(pkg_name, repos, package_name, quiet=True):
+def get_mirrors_for_distro(distro):
+    return {
+        "debian": debian_mirrors,
+        "ubuntu": ubuntu_mirrors,
+        "ubuntu-ports": ubuntu_ports_mirrors,
+        "devuan": devuan_mirrors,
+        "kde-neon": kde_neon_mirrors,
+        "nitrux": nitrux_mirrors,
+        "zbkit": zbkit_mirrors
+    }.get(distro, None)
+
+
+def build_probe_tasks(repos, pkg_name, quiet):
+    tasks = []
+    for repo in repos:
+        if "ppa" in repo:
+            continue
+        distro = repo.get("distro", "").lower()
+        release = repo.get("release")
+        arch = repo.get("arch")
+        components = repo.get("components", ["main"])
+
+        if not (distro and release and arch):
+            if not quiet:
+                print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
+            continue
+
+        mirror_list = get_mirrors_for_distro(distro)
+        if mirror_list is None:
+            if not quiet:
+                print(f"⚠️ Skipping unknown distro: {distro}")
+            continue
+
+        for mirror in mirror_list:
+            for component in components:
+                tasks.append((mirror, release, arch, pkg_name, component))
+    return tasks
+
+
+def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=False):
     """Download the latest .deb package for the given pkg_name by probing all mirrors concurrently."""
 
     excluded_packages = {
@@ -122,51 +165,19 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         print(f"❌ Error: No valid repositories provided for {pkg_name}. Aborting.\n")
         sys.exit(1)
 
-    probe_tasks = []
+    probe_tasks = build_probe_tasks(repos, pkg_name, quiet)
 
+    # Handle PPAs first
     for repo in repos:
         if "ppa" in repo:
             result = fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet)
             if result:
                 return result
-            continue
 
-        distro = repo.get("distro", "").lower()
-        release = repo.get("release")
-        arch = repo.get("arch")
-        components = repo.get("components", ["main"])
-
-        if not (distro and release and arch):
-            if not quiet:
-                print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
-            continue
-
-        if distro == "debian":
-            mirror_list = debian_mirrors
-        elif distro == "ubuntu":
-            mirror_list = ubuntu_mirrors
-        elif distro == "ubuntu-ports":
-            mirror_list = ubuntu_ports_mirrors
-        elif distro == "devuan":
-            mirror_list = devuan_mirrors
-        elif distro == "kde-neon":
-            mirror_list = kde_neon_mirrors
-        elif distro == "nitrux":
-            mirror_list = nitrux_mirrors
-        else:
-            if not quiet:
-                print(f"⚠️ Skipping unknown distro: {distro}")
-            continue
-
-        for mirror in mirror_list:
-            for component in components:
-                probe_tasks.append((mirror, release, arch, pkg_name, component))
-
+    fetch_failures = []
+    no_metadata = []
     candidates = []
     mirror_logs = []
-
-    if not quiet:
-        print()
 
     for mirror, release, arch, pkg_name, component in probe_tasks:
         try:
@@ -183,16 +194,28 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
                     "source": f"{mirror} [{component}]"
                 })
             elif status_msg and not quiet:
-                mirror_logs.append(f"        {status_msg}")
+                
+                if "Unable to fetch metadata" in status_msg:
+                    fetch_failures.append(status_msg)
+                elif "No metadata" in status_msg:
+                    no_metadata.append(status_msg)
+                else:
+                    mirror_logs.append(status_msg)
+
         except Exception as e:
             if not quiet:
-                mirror_logs.append(f"        ⛔ Unhandled error for {pkg_name} from {mirror} [{component}]: {e}")
+                mirror_logs.append(f"⛔ Unhandled error for {pkg_name} from {mirror} [{component}]: {e}")
 
-    if not quiet and mirror_logs:
-        print_grouped_logs(mirror_logs)
+    if not quiet:
+        from tqdm import tqdm
+        if fetch_failures:
+            tqdm.write("\n" + "\n".join(f"        {msg}" for msg in fetch_failures))
+        if no_metadata:
+            tqdm.write("\n" + "\n".join(f"        {msg}" for msg in no_metadata))
+        if mirror_logs:
+            tqdm.write("\n" + "\n".join(f"        {msg}" for msg in mirror_logs))
 
     if not candidates:
-        print()
         cleanup_cache(package_name)
         raise RuntimeError(f"❌ Error: Package '{pkg_name}' could not be found in any repository after probing {len(probe_tasks)} mirror/component pairs.")
 
@@ -200,11 +223,12 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
     best = candidates[0]
 
     if not quiet:
-        print()
-        print(f"        📦 Package: {pkg_name}")
-        print(f"        🔹 Version: {best['version_str']}")
-        print(f"        🔹 Source:  {best['source']}\n")
-        print(f"        📥 Downloading: {pkg_name} from: {best['url']}...\n")
+        with log_lock:
+            tqdm.write("")
+            tqdm.write(f"        📦 Package: {pkg_name}")
+            tqdm.write(f"        🔹 Version: {best['version_str']}")
+            tqdm.write(f"        🔹 Source:  {best['source']}\n")
+            tqdm.write(f"        📥 Downloading: {pkg_name} from: {best['url']}...\n")
 
     download_errors = []
 
@@ -212,13 +236,17 @@ def get_latest_deb(pkg_name, repos, package_name, quiet=True):
         try:
             return download_file(candidate["url"], candidate["path"], quiet=quiet)
         except RuntimeError as e:
-            download_errors.append(f"        ⚠️ {pkg_name}: {e} ← {candidate['url']}")
-            continue
+            download_errors.append(f"{pkg_name}: {e} ← {candidate['url']}")
 
-    if not quiet:
-        print()
-        print("\n".join(download_errors))
-    raise RuntimeError(f"\n⛔ All mirrors failed to download: {pkg_name}.")
+    if not quiet and download_errors:
+        from tqdm import tqdm
+        tqdm.write(
+            "\n" +
+            "\n".join(f"        ⚠️ {msg}" for msg in download_errors) +
+            "\n"
+        )
+
+    raise RuntimeError(f"⛔ All mirrors failed to download: {pkg_name}.")
 
 
 def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
@@ -271,7 +299,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
         return None, f"⭢ 🚧 Unable to fetch metadata from: {mirror_host}: {reason}"
 
 
-def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
+def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=False):
     ppa = repo["ppa"].strip()
     if not ppa or "/" not in ppa:
         print(f"❌ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
@@ -300,7 +328,7 @@ def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
     return None
 
 
-def download_file(url, destination, quiet=True):
+def download_file(url, destination, quiet=False):
     try:
         response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
@@ -311,7 +339,7 @@ def download_file(url, destination, quiet=True):
                     f.write(chunk)
 
         if not quiet:
-            print(f"        🎉 Successfully downloaded: {destination}\n")
+            tqdm.write(f"        🎉 Successfully downloaded: {destination}\n")
 
         return destination
 

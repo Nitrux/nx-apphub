@@ -24,11 +24,17 @@
 
 import os
 import platform
-import shutil
-from pathlib import Path
 import re
+import shutil
+import sys
+from pathlib import Path
+from shutil import get_terminal_size
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 import requests
+from tqdm import tqdm
 
 
 # -- Define base directories.
@@ -215,3 +221,79 @@ def infer_lint_metadata_from_yaml(yaml_path):
             result["components"] = base[0].get("components", ["main"])
 
     return result
+
+
+def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
+    from .downloader import get_latest_deb
+    from .extractor import extract_deb
+
+    if not dependencies:
+        print("📦 No dependencies listed.")
+        return
+
+    print(f"📥 Downloading {len(dependencies)} dependencies:\n")
+
+    download_tasks = []
+    for dep in dependencies:
+        if isinstance(dep, dict):
+            pkg_name = dep["name"]
+            repo_id = dep.get("repo")
+            if repo_id:
+                repo_list = [ppa_repos.get(repo_id)]
+                if repo_list[0] is None:
+                    print(f"❌ Error: Unknown repo ID '{repo_id}' for package '{pkg_name}'.")
+                    cleanup_cache(cache_name)
+                    return
+            else:
+                repo_list = base_repos
+        else:
+            pkg_name = dep
+            repo_list = base_repos
+
+        download_tasks.append((pkg_name, repo_list))
+
+    terminal_width = get_terminal_size((80, 20)).columns
+    try:
+        with tqdm(
+            total=len(download_tasks),
+            desc="    ⏬ Fetching PKGs",
+            unit="pkg",
+            ncols=terminal_width,
+            dynamic_ncols=False,
+            bar_format="{desc} {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} • {rate_fmt:<14}",
+            leave=True
+        ) as progress:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                log_lock = Lock()
+                futures = {
+                    executor.submit(get_latest_deb, pkg_name, repo_list, cache_name, log_lock): pkg_name
+                    for pkg_name, repo_list in download_tasks
+                }
+
+                for future in as_completed(futures):
+                    pkg_name = futures[future]
+                    try:
+                        deb_path = future.result()
+                        if deb_path:
+                            extract_deb(deb_path, cache_name)
+                        progress.update(1)
+                        tqdm.write("")
+                    except Exception as e:
+                        tqdm.write(f"\n❌ Error downloading {pkg_name}: {e}")
+                        progress.close()
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        cleanup_cache(cache_name)
+                        return
+
+    except KeyboardInterrupt:
+        tqdm.write("\n🛑 Interrupted by user. Exiting cleanly.\n")
+        progress.close()
+        
+        # -- Even though executor may not be defined if exception is raised before its creation, wrap shutdown in try to avoid NameError.
+
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except NameError:
+            pass
+        cleanup_cache(cache_name)
+        sys.exit(130)

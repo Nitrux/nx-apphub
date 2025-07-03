@@ -23,26 +23,24 @@
 #############################################################################################################################################################################
 
 import argparse
+import re
+import subprocess
 import sys
 import types
-import subprocess
-import re
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from shutil import get_terminal_size
 
 import yaml
-from tqdm import tqdm
 
+from .appdir_lint import run_linter
 from .builder import prepare_appimage, setup_appimage_directories
 from .config import load_yaml_config, validate_yaml_config
 from .downloader import get_latest_deb
 from .extractor import extract_deb
-from .manager import install, remove, search, show, update, downgrade
-from .utils import cleanup_cache, infer_lint_metadata_from_yaml, get_architecture
-from .appdir_lint import run_linter
 from .generator import generate_yaml, generate_description_md
+from .manager import install, remove, search, show, update, downgrade
+from .utils import cleanup_cache, infer_lint_metadata_from_yaml, get_architecture, concurrent_downloads
 
 
 def main():
@@ -157,47 +155,7 @@ def main():
 
             dependencies = config["buildinfo"].get("deps", [])
 
-            if dependencies:
-                print(f"📥 Downloading {len(dependencies)} dependencies:\n")
-
-                terminal_width = get_terminal_size((80, 20)).columns
-                with tqdm(
-                    dependencies,
-                    desc="    ⏬ Fetching PKGs",
-                    unit="pkg",
-                    ncols=terminal_width,
-                    dynamic_ncols=False,
-                    bar_format="{l_bar}{bar}| {remaining:>8} • {rate_fmt:<14}"
-                ) as progress:
-                    for dep in progress:
-                        if isinstance(dep, dict):
-                            pkg_name = dep["name"]
-                            repo_id = dep.get("repo")
-                            if repo_id:
-                                repo_list = [ppa_repos.get(repo_id)]
-                                if repo_list[0] is None:
-                                    progress.disable = True
-                                    print(f"❌ Error: Unknown repo ID '{repo_id}' for package '{pkg_name}'.")
-                                    cleanup_cache(package_name)
-                                    return
-                            else:
-                                repo_list = base_repos
-                        else:
-                            pkg_name = dep
-                            repo_list = base_repos
-
-                        try:
-                            deb_path = get_latest_deb(pkg_name, repo_list, package_name)
-                            if deb_path is not None:
-                                extract_deb(deb_path, package_name)
-                        except RuntimeError as e:
-                            progress.disable = True
-                            print(e)
-                            progress.close()
-                            cleanup_cache(package_name)
-                            return
-            else:
-                print("📦 No dependencies listed.")
+            concurrent_downloads(dependencies, base_repos, ppa_repos, package_name)
 
             print()
             prepare_appimage(config)
