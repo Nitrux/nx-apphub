@@ -277,9 +277,9 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
                         if deb_path:
                             extract_deb(deb_path, cache_name)
                         progress.update(1)
-                        tqdm.write("")
                     except Exception as e:
-                        tqdm.write(f"\n❌ Error downloading {pkg_name}: {e}")
+                        with log_lock:
+                            tqdm.write(f"\n❌ Error downloading {pkg_name}: {e}")
                         progress.close()
                         executor.shutdown(wait=False, cancel_futures=True)
                         cleanup_cache(cache_name)
