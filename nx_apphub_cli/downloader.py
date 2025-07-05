@@ -266,54 +266,62 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
     raise RuntimeError(f"⛔ All mirrors failed to download: {pkg_name}.")
 
 
-def fetch_package_metadata(mirror, release, arch, pkg_name, component="main"):
-    """Fetch the package filename and version from Packages.gz metadata."""
+def fetch_package_metadata(mirror, release, arch, pkg_name, component="main", retries=3):
+    """Fetch the package filename and version from Packages.gz metadata, with retry on failure."""
     packages_url = f"{mirror}/dists/{release}/{component}/binary-{arch}/Packages.gz"
+    delay_range = (0.2, 0.6)
 
-    try:
-        response = requests.get(packages_url, timeout=20, stream=True)
-        response.raise_for_status()
-
+    for attempt in range(1, retries + 1):
         try:
-            with gzip.open(response.raw, "rt", encoding="utf-8", errors="ignore") as f:
-                current_package = None
-                filename = None
-                version = None
+            response = requests.get(packages_url, timeout=20, stream=True)
+            response.raise_for_status()
 
-                for line in f:
-                    line = line.strip()
+            try:
+                with gzip.open(response.raw, "rt", encoding="utf-8", errors="ignore") as f:
+                    current_package = None
+                    filename = None
+                    version = None
 
-                    if line.startswith("Package: "):
-                        current_package = line.split("Package: ")[1]
-                        filename = None
-                        version = None
+                    for line in f:
+                        line = line.strip()
 
-                    elif line.startswith("Version: ") and current_package == pkg_name:
-                        version = line.split("Version: ")[1]
+                        if line.startswith("Package: "):
+                            current_package = line.split("Package: ")[1]
+                            filename = None
+                            version = None
 
-                    elif line.startswith("Filename: ") and current_package == pkg_name:
-                        filename = line.split("Filename: ")[1]
+                        elif line.startswith("Version: ") and current_package == pkg_name:
+                            version = line.split("Version: ")[1]
 
-                    if current_package == pkg_name and filename and version:
-                        return (filename, version), None
+                        elif line.startswith("Filename: ") and current_package == pkg_name:
+                            filename = line.split("Filename: ")[1]
 
-        except (OSError, EOFError, gzip.BadGzipFile) as gz_err:
-            return None, f"❌ Error: Failed to decompress metadata from {packages_url}: {gz_err}"
+                        if current_package == pkg_name and filename and version:
+                            return (filename, version), None
 
-        return None, f"⛔ No metadata for: {pkg_name} from: {mirror} [{component}]"
+            except (OSError, EOFError, gzip.BadGzipFile) as gz_err:
+                return None, f"❌ Error: Failed to decompress metadata from {packages_url}: {gz_err}"
 
-    except requests.exceptions.RequestException as e:
-        if isinstance(e, requests.exceptions.Timeout):
-            reason = "⌛ Timeout"
-        elif isinstance(e, requests.exceptions.ConnectionError):
-            reason = "🔌 Connection error"
-        elif isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
-            reason = f"HTTP {e.response.status_code}"
-        else:
-            reason = e.__class__.__name__
+            return None, f"⛔ No metadata for: {pkg_name} from: {mirror} [{component}]"
 
-        mirror_host = urllib.parse.urlparse(packages_url).hostname
-        return None, f"⭢ 🚧 Unable to fetch metadata from: {mirror_host}: {reason}"
+        except requests.exceptions.RequestException as e:
+            if attempt < retries:
+                time.sleep(random.uniform(*delay_range))
+                continue
+
+            if isinstance(e, requests.exceptions.Timeout):
+                reason = "⌛ Timeout"
+            elif isinstance(e, requests.exceptions.ConnectionError):
+                reason = "🔌 Connection error"
+            elif isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
+                reason = f"HTTP {e.response.status_code}"
+            else:
+                reason = e.__class__.__name__
+
+            mirror_host = urllib.parse.urlparse(packages_url).hostname
+            return None, f"⭢ 🚧 Unable to fetch metadata from: {mirror_host}: {reason} (after {retries} attempts)"
+
+    return None, f"⭢ 🚧 Unexpected error for {pkg_name} from {mirror} [{component}]"
 
 
 def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
