@@ -24,12 +24,13 @@
 
 import os
 import platform
+import random
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 from shutil import get_terminal_size
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
@@ -253,6 +254,7 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
         download_tasks.append((pkg_name, repo_list))
 
     terminal_width = get_terminal_size((80, 20)).columns
+
     try:
         with tqdm(
             total=len(download_tasks),
@@ -263,12 +265,14 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
             bar_format="{desc} {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} • {rate_fmt:<14}",
             leave=True
         ) as progress:
-            with ThreadPoolExecutor(max_workers=2) as executor:
+            with ThreadPoolExecutor(max_workers=3) as executor:
                 log_lock = Lock()
-                futures = {
-                    executor.submit(get_latest_deb, pkg_name, repo_list, cache_name, log_lock): pkg_name
-                    for pkg_name, repo_list in download_tasks
-                }
+                futures = {}
+
+                for pkg_name, repo_list in download_tasks:
+                    future = executor.submit(get_latest_deb, pkg_name, repo_list, cache_name, log_lock)
+                    futures[future] = pkg_name
+                    time.sleep(random.uniform(0.05, 0.3))
 
                 for future in as_completed(futures):
                     pkg_name = futures[future]

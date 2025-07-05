@@ -23,15 +23,17 @@
 #############################################################################################################################################################################
 
 import gzip
+import random
 import re
 import sys
+import time
 import urllib.parse
 from pathlib import Path
+from threading import Lock
 
 import requests
 from debian import debian_support
 from tqdm import tqdm
-from threading import Lock
 
 from .utils import cleanup_cache
 
@@ -90,10 +92,15 @@ def get_mirrors_for_distro(distro):
 
 
 def build_probe_tasks(repos, pkg_name, quiet):
+    """
+    Build probe tasks that randomly distribute mirrors to balance load,
+    avoiding hitting the same mirror with multiple concurrent requests unnecessarily.
+    """
     tasks = []
     for repo in repos:
         if "ppa" in repo:
             continue
+
         distro = repo.get("distro", "").lower()
         release = repo.get("release")
         arch = repo.get("arch")
@@ -105,14 +112,23 @@ def build_probe_tasks(repos, pkg_name, quiet):
             continue
 
         mirror_list = get_mirrors_for_distro(distro)
-        if mirror_list is None:
+        if not mirror_list:
             if not quiet:
                 print(f"⚠️ Skipping unknown distro: {distro}")
             continue
 
-        for mirror in mirror_list:
-            for component in components:
+        # -- Randomize the mirror list to spread load across mirrors.
+
+        mirror_list = mirror_list[:]  # copy to avoid side effects
+        random.shuffle(mirror_list)
+
+        # -- Only add one mirror per component at a time to reduce load.
+
+        for component in components:
+            for mirror in mirror_list:
                 tasks.append((mirror, release, arch, pkg_name, component))
+                break  # Only take one mirror for this component
+
     return tasks
 
 
@@ -180,6 +196,7 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
     mirror_logs = []
 
     for mirror, release, arch, pkg_name, component in probe_tasks:
+        time.sleep(random.uniform(0.05, 0.2))
         try:
             result, status_msg = fetch_package_metadata(mirror, release, arch, pkg_name, component)
             if result:
@@ -333,8 +350,10 @@ def download_file(url, destination, quiet=True):
         response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
 
+        dl_chunk_size = 1024 * 1024
+
         with open(destination, "wb") as f:
-            for chunk in response.iter_content(chunk_size=65536):
+            for chunk in response.iter_content(chunk_size=dl_chunk_size):
                 if chunk:
                     f.write(chunk)
 
