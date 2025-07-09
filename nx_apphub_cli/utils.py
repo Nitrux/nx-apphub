@@ -31,7 +31,7 @@ import sys
 import time
 from pathlib import Path
 from shutil import get_terminal_size
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 from threading import Lock
 
 import requests
@@ -40,7 +40,7 @@ from tqdm import tqdm
 
 # -- Define base directories.
 
-app_base_dir = Path.home() / ".cache/nx-apphub-cli"
+cache_dir = Path.home() / ".cache/nx-apphub-cli"
 local_bin = Path.home() / ".local/bin"
 appimagetool_path = local_bin / "appimagetool"
 go_appimagetool_path = local_bin / "go-appimagetool"
@@ -66,8 +66,6 @@ def get_architecture():
 
 def cleanup_cache(package_name=None):
     """Remove the cache directory for a specific package or skip full cache cleanup."""
-
-    cache_dir = Path.home() / ".cache/nx-apphub-cli"
 
     if package_name:
         target_dir = cache_dir / package_name
@@ -242,8 +240,7 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
             if repo_id:
                 repo_list = [ppa_repos.get(repo_id)]
                 if repo_list[0] is None:
-                    print(f"❌ Error: Unknown repo ID '{repo_id}' for package '{pkg_name}'.")
-                    cleanup_cache(cache_name)
+                    print(f"❌ Error: Unknown repo ID: '{repo_id}' for package: '{pkg_name}'.")
                     return
             else:
                 repo_list = base_repos
@@ -267,34 +264,36 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
         ) as progress:
             with ThreadPoolExecutor(max_workers=3) as executor:
                 log_lock = Lock()
-                futures = {}
+                future_to_pkg = {
+                    executor.submit(get_latest_deb, pkg_name, repo_list, cache_name, log_lock): pkg_name
+                    for pkg_name, repo_list in download_tasks
+                }
 
-                for pkg_name, repo_list in download_tasks:
-                    future = executor.submit(get_latest_deb, pkg_name, repo_list, cache_name, log_lock)
-                    futures[future] = pkg_name
-                    time.sleep(random.uniform(0.05, 0.3))
+                pending = set(future_to_pkg)
 
-                for future in as_completed(futures):
-                    pkg_name = futures[future]
-                    try:
-                        deb_path = future.result()
-                        if deb_path:
-                            extract_deb(deb_path, cache_name)
+                while pending:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
+
+                    for future in done:
+                        pkg_name = future_to_pkg[future]
+                        try:
+                            deb_path = future.result()
+                            if deb_path:
+                                extract_deb(deb_path, cache_name)
+                        except Exception as e:
+                            with log_lock:
+                                tqdm.write(f"❌ Error: {e}")
+                                tqdm.write("")
+                            progress.close()
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            tqdm.write(f"\n❌ Error: AppImage build failed!")
+                            cleanup_cache(cache_name)
+                            sys.exit(1)
+
                         progress.update(1)
-                    except Exception as e:
-                        with log_lock:
-                            tqdm.write(f"\n❌ Error downloading {pkg_name}: {e}")
-                        progress.close()
-                        executor.shutdown(wait=False, cancel_futures=True)
-                        cleanup_cache(cache_name)
-                        return
 
     except KeyboardInterrupt:
         tqdm.write("\n🛑 Interrupted by user. Exiting cleanly.\n")
-        progress.close()
-        
-        # -- Even though executor may not be defined if exception is raised before its creation, wrap shutdown in try to avoid NameError.
-
         try:
             executor.shutdown(wait=False, cancel_futures=True)
         except NameError:

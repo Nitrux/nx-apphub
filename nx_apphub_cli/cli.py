@@ -40,7 +40,7 @@ from .downloader import get_latest_deb
 from .extractor import extract_deb
 from .generator import generate_yaml, generate_description_md
 from .manager import install, remove, search, show, update, downgrade
-from .utils import cleanup_cache, infer_lint_metadata_from_yaml, get_architecture, concurrent_downloads
+from .utils import infer_lint_metadata_from_yaml, get_architecture, concurrent_downloads
 
 
 def main():

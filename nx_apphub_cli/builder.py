@@ -414,7 +414,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
     if not extracted_binary_path.exists():
-        print(f"❌ Error: Binary {extracted_binary_path} not found! AppImage might fail.")
+        print(f"❌ Error: Binary {extracted_binary_path} not found!. Aborting.")
         cleanup_cache(app_name)
         sys.exit(1)
 
@@ -441,10 +441,11 @@ def prepare_appimage(config, install_mode=False, quiet=True):
                 print(f"    🤖 Command executed: {cmd_resolved}")
                 print()
             except subprocess.CalledProcessError as e:
-                print(f"❌ Error: Failed to execute prebuild command '{cmd_resolved}'.\n")
-                print(f"📜 Output:\n{e.stderr.decode(errors='replace')}\n")
+                print(f"❌ Error: Failed to execute prebuild command: '{cmd_resolved}'.\n")
+                print(f"    📜 Output: {e.stderr.decode(errors='replace')}")
+                print(f"❌ Error: AppImage build failed!")
                 cleanup_cache(app_name)
-                return
+                sys.exit(1)
 
     # -- Select AppImage runtime tool based on runtime.
 
