@@ -66,17 +66,13 @@ def install(app_names):
     if not isinstance(app_names, list):
         app_names = [app_names]
 
-    print(f"\n[ ⚡ Installing: {', '.join(app_names)} ]")
-    print()
+    print(f"\n[ ⚡ Installing: {', '.join(app_names)} ]\n")
 
     # -- Ensure the repository is valid.
 
     if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
-        print(f"🚨️ Warning: {repo_base_dir} is not a valid Git repository. Removing...")
-        print()
+        print(f"🚨️ Warning: {repo_base_dir} is not a valid Git repository. Removing...\n")
         shutil.rmtree(repo_base_dir)
-
-    # -- If repo is valid and non-empty, try updating it.
 
     if (repo_base_dir / ".git").exists() and any(repo_dir.glob("*")):
         try:
@@ -84,114 +80,100 @@ def install(app_names):
                 ["git", "-C", str(repo_base_dir), "status", "--porcelain"],
                 check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
-            untracked = []
-            for line in status_result.stdout.splitlines():
-                if line.startswith("??"):
-                    path = line[3:]
-                    if not path.startswith("firejail.d/"):  # whitelist
-                        untracked.append(path)
-
+            untracked = [
+                line[3:]
+                for line in status_result.stdout.splitlines()
+                if line.startswith("??") and not line[3:].startswith("firejail.d/")
+            ]
             if untracked:
                 print(f"🚨 Warning: Repository has untracked files: {', '.join(untracked)}")
                 print(" 🔹 Ignoring known safe changes (e.g., firejail.d/) if present.\n")
 
-            # Perform the pull
             pull_result = subprocess.run(
                 ["git", "-C", str(repo_base_dir), "pull"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
-
-            if pull_result.returncode == 0:
-                print("🔄 Applications repository updated.\n")
-            else:
-                print(f"🚨 Warning: Failed to update repository. Continuing with the existing version.\n")
+            print("🔄 Applications repository updated.\n" if pull_result.returncode == 0
+                  else "🚨 Warning: Failed to update repository. Continuing with the existing version.\n")
 
         except Exception as e:
             print(f"🚨 Warning: Git update check failed ({e}). Continuing...\n")
 
+    if not any(repo_dir.glob("*")):
+        print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
+        try:
+            subprocess.run(
+                ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except subprocess.CalledProcessError:
+            print("❌ Error: Failed to clone app repository. Try again.\n")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ Error: Unexpected failure during clone: {e}\n")
+            sys.exit(1)
 
-        if not any(repo_dir.glob("*")):
-            print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
-            try:
-                subprocess.run(
-                    ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
-                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-            except subprocess.CalledProcessError:
-                print("❌ Error: Failed to clone app repository. Try again.")
-                print()
-                sys.exit(1)
-            except Exception as e:
-                print(f"❌ Error: Unexpected failure during clone: {e}")
-                print()
-                sys.exit(1)
+    # -- Phase 1: Evaluate each app and classify as installed or to-be-built.
+
+    to_build = []
+
+    printed_installed_msg = False
 
     for app_name in app_names:
-
-        # -- Load YAML and determine AppBox filename.
-
         app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
         if not app_yaml_path.exists():
-            print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.")
-            print()
+            print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
             continue
 
         config = load_yaml_config(app_yaml_path)
         app_version = config["buildinfo"].get("version", "unknown")
 
-        # -- Ensure version is valid.
-
         if not app_version or app_version == "unknown":
-            print(f"    ❌ Error: No valid version found for {app_name}. Skipping installation.")
+            print(f"    ❌ Error: No valid version found for {app_name}. Skipping installation.\n")
             continue
-
-        # -- Check if **any version** of the AppImage is already installed.
 
         installed_appbox = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
-
         if installed_appbox:
             installed_version = installed_appbox.stem.split("-")[1]
-            print(f"    ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.\n")
+            print(f"    ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.")
+            printed_installed_msg = True
             continue
 
-        # -- Ensure `distrorepo` is explicitly defined.
+        to_build.append((app_name, config))
 
-        distrorepo = config["buildinfo"].get("distrorepo")
-        if not distrorepo:
-            print(f"    ❌ Error: No 'distrorepo' specified for {app_name}. Skipping installation.")
-            continue
+    if printed_installed_msg:
+        print()
 
-        # -- Process dependencies.
+    # -- Phase 2: Download and build new apps.
 
+    for index, (app_name, config) in enumerate(to_build):
         repos_config = config["buildinfo"].get("distrorepo", {})
+        if not repos_config:
+            print(f"    ❌ Error: No 'distrorepo' specified for {app_name}. Skipping installation.\n")
+            continue
 
-        #  -- Support both list and dict formats.
-
-        if isinstance(repos_config, list):
-            base_repos = repos_config
-            ppa_repos = {}
-        else:
-            base_repos = repos_config.get("base", [])
-            ppa_repos = {ppa["id"]: ppa for ppa in repos_config.get("ppas", [])}
+        base_repos = repos_config if isinstance(repos_config, list) else repos_config.get("base", [])
+        ppa_repos = {} if isinstance(repos_config, list) else {
+            ppa["id"]: ppa for ppa in repos_config.get("ppas", [])
+        }
 
         dependencies = config["buildinfo"].get("deps", [])
 
         concurrent_downloads(dependencies, base_repos, ppa_repos, app_name)
 
-        # -- Build AppImage.
-
         print("\n🛠  Building AppBox...\n")
         prepare_appimage(config, install_mode=True)
 
-        # -- Verify new AppBox exists before final confirmation.
-
-        built_appbox = install_dir / f"{app_name}-{app_version}-{system_arch}.AppBox"
+        built_appbox = install_dir / f"{app_name}-{config['buildinfo'].get('version')}-{system_arch}.AppBox"
         if not built_appbox.exists():
-            print(f"❌ Error: Failed to find the built {built_appbox} file. Skipping installation.")
+            print(f"❌ Error: Failed to find the built {built_appbox} file. Skipping installation.\n")
             cleanup_cache(app_name)
             return
 
         print(f"✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
+
+        if index < len(to_build) - 1:
+            print()
 
     print("🎉 All requested applications have been processed!\n")
 
@@ -217,7 +199,7 @@ def remove(app_names):
 
         try:
             app_file.unlink()
-            removed_apps.append(f"    ✅ {app_name} (Removed)")
+            removed_apps.append(f"    ✅ {app_name} (Deleted)")
 
             firejail_profile = Path.home() / ".local/share/nx-apphub-cli/firejail.d" / f"{app_name}-profile.profile"
             if firejail_profile.exists():
@@ -229,15 +211,18 @@ def remove(app_names):
             continue
 
     if removed_apps:
-        print("🟢 Successfully Removed:\n\n" + "\n".join(removed_apps))
+        print("🟢 Uninstalled:\n\n" + "\n".join(removed_apps))
 
     if firejail_profiles_deleted:
         print(f"\n🔒 Firejail profile(s) deleted: {', '.join(sorted(firejail_profiles_deleted))}")
 
     if missing_apps:
+        if removed_apps or firejail_profiles_deleted:
+            print()
         print("🔴 Skipped:\n\n" + "\n".join(missing_apps))
 
-    print("\n🎉 All requested applications have been processed!\n")
+    print()
+    print("🎉 All requested applications have been processed!\n")
 
 
 def search(app_names):
