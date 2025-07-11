@@ -170,9 +170,9 @@ def install(app_names):
             cleanup_cache(app_name)
             return
 
-        print(f"✅ Installation successful!\n\n    📦 Available at: {built_appbox}\n")
+        print(f"✅ Installation successful!\n\n    📦 Available at: {built_appbox}")
 
-        if index < len(to_build) - 1:
+        if to_build:
             print()
 
     print("🎉 All requested applications have been processed!\n")
@@ -281,6 +281,10 @@ def update(app_names):
 
     if isinstance(app_names, str):
         app_names = [app_names]
+    
+    # -- Remove duplicates while preserving order.
+
+    app_names = list(dict.fromkeys(app_names))
 
     print(f"\n[ 📤 Updating: {', '.join(app_names)} ]\n")
 
