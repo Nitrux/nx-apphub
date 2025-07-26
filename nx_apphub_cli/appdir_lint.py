@@ -32,8 +32,8 @@ import requests
 import yaml
 import re
 from elftools.elf.elffile import ELFFile
-
-
+# <---
+# --->
 def detect_appdir(path):
     """Normalize path and auto-detect if it's a squashfs-root."""
     path = Path(path).expanduser().resolve()

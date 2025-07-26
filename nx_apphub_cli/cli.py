@@ -41,8 +41,8 @@ from .extractor import extract_deb
 from .generator import generate_yaml, generate_description_md
 from .manager import install, remove, search, show, update, downgrade
 from .utils import infer_lint_metadata_from_yaml, get_architecture, concurrent_downloads
-
-
+# <---
+# --->
 def main():
     try:
         parser = argparse.ArgumentParser(

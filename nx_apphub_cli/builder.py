@@ -32,8 +32,8 @@ from pathlib import Path
 from .config import get_apprunconf_value
 from .utils import cleanup_cache, get_appimagetool, get_go_appimagetool, get_uruntime, get_architecture
 from .apprun import generate_apprun
-
-
+# <---
+# --->
 # -- Base working directory for all packages.
 
 app_base_dir = Path.home() / ".cache/nx-apphub-cli"

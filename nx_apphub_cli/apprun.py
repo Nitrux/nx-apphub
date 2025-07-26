@@ -27,8 +27,8 @@ from datetime import datetime
 from .config import get_apprunconf_value
 from .utils import get_architecture
 from .sandbox import get_sandbox_exec_block
-
-
+# <---
+# --->
 def generate_apprun(app_dir, config):
     """Generate the AppRun script dynamically inside the AppImage."""
     apprun_path = app_dir / "AppRun"
