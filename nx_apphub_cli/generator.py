@@ -65,6 +65,7 @@ distro_mirrors = {
     ],
     "nitrux": [
         "https://packagecloud.io/nitrux/mauikit/debian",
+        "https://packagecloud.io/nitrux/area51/debian",
     ]
 }
 
@@ -82,7 +83,17 @@ def fetch_packages_metadata(distro, release, arch, components):
                 with gzip.open(BytesIO(r.content), 'rt', encoding='utf-8', errors='ignore') as f:
                     metadata += f.read()
             except requests.exceptions.RequestException as e:
-                print(f"❌ Error: Failed to fetch metadata from {url}: {e}")
+                print(f"🚧 Could not fetch metadata from the repository.")
+                print(f"  ↪ URL: {url}")
+                
+                if hasattr(e, 'response') and e.response is not None:
+                    print(f"  ↪ Issue: The server returned a '{e.response.status_code} {e.response.reason}' error.")
+                else:
+                    print(f"  ↪ Issue: {e}")
+                print()
+                print("👉 Tip: A '404 Not Found' error usually means the combination of distribution, release, or component is incorrect.")
+                print()
+
     return metadata
 
 
@@ -141,7 +152,7 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
     entry = parse_package_info(package_name, metadata)
     if not entry:
         print()
-        print(f"⛔ Unable to find '{package_name}' in the repository metadata.")
+        print(f"🚧 Unable to find '{package_name}' in the repository metadata.")
         print(f"  ↪ (Searched in Distro: {distro}, Release: {release}, Components: {', '.join(components)})")
         print()
         print(f"👉 Tip: The package might be in a different component. Try adding them to your command, e.g.: --components main universe")

@@ -293,13 +293,14 @@ def main():
 
                     f.write(yaml_str)
 
-                print(f"\n✅ YAML template written to: {args.output}\n")
+                print(f"✅ YAML template written to: {args.output}")
 
                 if args.description_output and fields:
                     md = generate_description_md(fields)
                     with open(args.description_output, "w") as desc:
                         desc.write(md)
-                    print(f"📝 Description Markdown written to: {args.description_output}\n")
+                    print(f"📝 Description template written to: {args.description_output}")
+                print()
         else:
             parser.print_help()
             sys.exit(1)
