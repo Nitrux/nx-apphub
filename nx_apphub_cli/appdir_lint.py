@@ -223,7 +223,7 @@ def run_linter(args=None):
         print("✅ No missing shared libraries found.\n")
         return
 
-    print("❌ Missing shared libraries:\n")
+    print("🚨 Missing shared libraries:\n")
     for lib, sources in sorted(missing.items()):
         print(f"{lib} — required by:")
         for src in sorted(set(sources)):
