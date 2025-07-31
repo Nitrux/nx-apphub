@@ -47,24 +47,24 @@ excluded_packages = {
 
 distro_mirrors = {
     "debian": [
-        "https://deb.debian.org/debian",
         "https://ftp.debian.org/debian",
-        "https://ftp.uk.debian.org/debian",
-        "https://ftp.us.debian.org/debian",
-        "https://ftp.de.debian.org/debian",
+        "https://uk.mirrors.clouvider.net/debian",
+        "https://atl.mirrors.clouvider.net/debian",
+        "https://ftp.tu-clausthal.de/debian",
     ],
     "ubuntu": [
         "https://archive.ubuntu.com/ubuntu",
         "https://security.ubuntu.com/ubuntu",
+        "https://mirrors.kernel.org/ubuntu",
     ],
     "devuan": [
-        "https://deb.devuan.org/devuan",
-        "https://devuan.ipacct.com/devuan",
-        "https://mirror.vpgrp.io/devuan",
-        "https://mirrors.dotsrc.org/devuan",
+        "http://deb.devuan.org/merged",
     ],
     "kde-neon": [
-        "https://archive.neon.kde.org/user",
+        "https://origin.archive.neon.kde.org/stable/",
+    ],
+    "nitrux": [
+        "https://packagecloud.io/nitrux/mauikit/debian",
     ]
 }
 
@@ -81,8 +81,7 @@ def fetch_packages_metadata(distro, release, arch, components):
                 r.raise_for_status()
                 with gzip.open(BytesIO(r.content), 'rt', encoding='utf-8', errors='ignore') as f:
                     metadata += f.read()
-                return metadata
-            except Exception as e:
+            except requests.exceptions.RequestException as e:
                 print(f"❌ Error: Failed to fetch metadata from {url}: {e}")
     return metadata
 
@@ -141,7 +140,12 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
 
     entry = parse_package_info(package_name, metadata)
     if not entry:
-        print(f"Package '{package_name}' not found in metadata.")
+        print()
+        print(f"⛔ Unable to find '{package_name}' in the repository metadata.")
+        print(f"  ↪ (Searched in Distro: {distro}, Release: {release}, Components: {', '.join(components)})")
+        print()
+        print(f"👉 Tip: The package might be in a different component. Try adding them to your command, e.g.: --components main universe")
+        print()
         return None, None
 
     fields = parse_fields(entry)
