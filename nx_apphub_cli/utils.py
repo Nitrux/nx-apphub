@@ -30,7 +30,6 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from shutil import get_terminal_size
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 from threading import Lock
 
@@ -250,7 +249,7 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
 
         download_tasks.append((pkg_name, repo_list))
 
-    terminal_width = get_terminal_size((80, 20)).columns
+    terminal_width = shutil.get_terminal_size((80, 20)).columns
 
     try:
         with tqdm(
