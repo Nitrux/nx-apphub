@@ -194,7 +194,8 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
         "mesa-vulkan-drivers",
         "sudo",
         "systemd",
-        "systemd-sysv"
+        "systemd-sysv",
+        "udev"
     }
 
     if pkg_name in excluded_packages:
