@@ -24,6 +24,7 @@
 
 import argparse
 import gzip
+import lzma
 import re
 from io import BytesIO
 from pathlib import Path
@@ -76,23 +77,39 @@ def fetch_repository_metadata(distro, release, arch, components):
 
     for mirror in mirrors:
         for component in components:
-            url = f"{mirror}/dists/{release}/{component}/binary-{arch}/Packages.gz"
-            try:
-                r = requests.get(url, timeout=10)
-                r.raise_for_status()
-                with gzip.open(BytesIO(r.content), 'rt', encoding='utf-8', errors='ignore') as f:
-                    metadata += f.read()
-            except requests.exceptions.RequestException as e:
-                print(f"🚧 Could not fetch metadata from the repository.")
-                print(f"  ↪ URL: {url}")
-                
-                if hasattr(e, 'response') and e.response is not None:
-                    print(f"  ↪ Issue: The server returned a '{e.response.status_code} {e.response.reason}' error.")
-                else:
-                    print(f"  ↪ Issue: {e}")
-                print()
-                print("👉 Tip: A '404 Not Found' error usually means the combination of distribution, release, or component is incorrect.")
-                print()
+            base_url = f"{mirror}/dists/{release}/{component}/binary-{arch}/"
+            urls_to_try = [base_url + "Packages.gz", base_url + "Packages.xz"]
+            
+            for url in urls_to_try:
+                try:
+                    r = requests.get(url, timeout=10)
+
+                    if r.status_code == 404:
+                        continue
+                    
+                    r.raise_for_status()
+
+                    content = r.content
+                    if url.endswith(".gz"):
+                        with gzip.open(BytesIO(content), 'rt', encoding='utf-8', errors='ignore') as f:
+                            metadata += f.read()
+                    elif url.endswith(".xz"):
+                        with lzma.open(BytesIO(content), 'rt', encoding='utf-8', errors='ignore') as f:
+                            metadata += f.read()
+                    
+                    break
+
+                except requests.exceptions.RequestException as e:
+                    print(f"🚧 Could not fetch metadata from the repository.")
+                    print(f"  ↪ URL: {url}")
+                    
+                    if hasattr(e, 'response') and e.response is not None:
+                        print(f"  ↪ Issue: The server returned a '{e.response.status_code} {e.response.reason}' error.")
+                    else:
+                        print(f"  ↪ Issue: {e}")
+                    print()
+                    print("👉 Tip: A '404 Not Found' error usually means the combination of distribution, release, or component is incorrect.")
+                    print()
 
     return metadata
 
