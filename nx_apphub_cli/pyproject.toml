@@ -17,7 +17,7 @@ dependencies = [
     "pyyaml",
     "tqdm",
     "python-debian",
-    "pyelftools
+    "pyelftools"
 ]
 
 [project.urls]
@@ -25,3 +25,15 @@ Homepage = "https://github.com/Nitrux/nx-apphub"
 
 [project.scripts]
 nx-apphub-cli = "nx_apphub_cli.cli:main"
+
+[project.optional-dependencies]
+dev = ["isort"]
+
+[tool.isort]
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+known_first_party = ["nx_apphub_cli"]
+skip = [".venv", "build", "dist"]

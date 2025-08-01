@@ -70,7 +70,7 @@ distro_mirrors = {
 }
 
 
-def fetch_packages_metadata(distro, release, arch, components):
+def fetch_repository_metadata(distro, release, arch, components):
     metadata = ""
     mirrors = distro_mirrors.get(distro, [])
 
@@ -145,7 +145,7 @@ def parse_fields(entry):
 
 
 def generate_yaml(package_name, distro, release, arch, components, integration_key="gui_app", runtime="classic"):
-    metadata = fetch_packages_metadata(distro, release, arch, components)
+    metadata = fetch_repository_metadata(distro, release, arch, components)
     if not metadata:
         return None, None
 
