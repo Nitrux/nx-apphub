@@ -216,7 +216,8 @@ def run_linter(args=None):
         print(f"\n⛔ Invalid or incomplete AppDir: {appdir_path}\n")
         return
 
-    print(f"\n🔍 Scanning AppDir: {appdir_path}\n")
+    print()
+    print(f"🔍 Scanning AppDir: {appdir_path}\n")
     missing = find_missing_libs(appdir_path)
 
     if not missing:

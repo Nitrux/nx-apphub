@@ -269,28 +269,35 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
                     for pkg_name, repo_list in download_tasks
                 }
 
-                pending = set(future_to_pkg)
+                has_failed = False
+                first_exception = None
 
-                while pending:
-                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in as_completed(future_to_pkg):
+                    try:
+                        deb_path = future.result()
+                        
+                        if has_failed:
+                            continue
 
-                    for future in done:
-                        pkg_name = future_to_pkg[future]
-                        try:
-                            deb_path = future.result()
-                            if deb_path:
-                                extract_deb(deb_path, cache_name)
-                        except Exception as e:
-                            with log_lock:
-                                tqdm.write(f"❌ Error: {e}")
-                                tqdm.write("")
-                            progress.close()
-                            executor.shutdown(wait=False, cancel_futures=True)
-                            tqdm.write(f"\n❌ Error: AppImage build failed!")
-                            cleanup_cache(cache_name)
-                            sys.exit(1)
-
+                        if deb_path:
+                            extract_deb(deb_path, cache_name)
+                        
                         progress.update(1)
+
+                    except Exception as e:
+                        if not has_failed:
+                            has_failed = True
+                            first_exception = e
+                            executor.shutdown(wait=False, cancel_futures=True)
+                
+                if has_failed:
+                    progress.close()
+                    with log_lock:
+                        tqdm.write(f"\n❌ Error: {first_exception}")
+                    
+                    print(f"\n❌ Error: AppImage build failed!.")
+                    cleanup_cache(cache_name)
+                    sys.exit(1)
 
     except KeyboardInterrupt:
         tqdm.write("\n🛑 Interrupted by user. Exiting cleanly.\n")
