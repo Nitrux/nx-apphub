@@ -30,7 +30,7 @@ from pathlib import Path
 
 bwrap_boolean_flags = {
     "ro-root": ["--ro-bind", "/", "/"],
-    "dev": ["--dev", "/dev"],
+    "dev": ["--dev-bind", "/dev", "/dev"],
     "proc": ["--proc", "/proc"],
     "tmpfs": ["--tmpfs", "/tmp"],
     "mqueue": ["--mqueue", "/dev/mqueue"],
