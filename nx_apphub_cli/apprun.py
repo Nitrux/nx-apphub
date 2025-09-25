@@ -141,7 +141,7 @@ if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 # -- Set environment variables for proper execution inside the AppImage.
 
 export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin"
-export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/inkscape:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy:$APPDIR{setlibpath}/{multiarch_triplet}/pulseaudio"
+export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/inkscape:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy:$APPDIR{setlibpath}/{multiarch_triplet}/pulseaudio:$APPDIR/lib:$APPDIR/lib64:$APPDIR/lib/{multiarch_triplet}:$APPDIR/lib64/{multiarch_triplet}"
 export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
 
 

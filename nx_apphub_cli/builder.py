@@ -301,9 +301,15 @@ def patch_binary_rpath(binary_path, config):
 
     try:
         rpath_parts = [
+
+            # -- Prefer AppDir/usr first.
+
             f"$ORIGIN/../..{setlibpath}",
             f"$ORIGIN/../..{setlibpath}/{multiarch_triplet}",
             f"$ORIGIN/../..{setlibpath}64",
+
+            # -- App-specific plugin locations under /usr.
+
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/inkscape",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/pulseaudio",
@@ -315,6 +321,16 @@ def patch_binary_rpath(binary_path, config):
             f"$ORIGIN/../../..{setlibpath}/qt5/bin",
             f"$ORIGIN/../../..{setlibpath}/qt6/libexec",
             f"$ORIGIN/../../..{setlibpath}/qt6/bin",
+
+            # -- /lib multiarch.
+
+            f"$ORIGIN/../../lib/{multiarch_triplet}",
+            f"$ORIGIN/../../lib64/{multiarch_triplet}",
+
+            # -- /lib non-multiarch (add these).
+
+            f"$ORIGIN/../../lib",
+            f"$ORIGIN/../../lib64",
         ]
 
         rpath_value = ":".join(rpath_parts)
