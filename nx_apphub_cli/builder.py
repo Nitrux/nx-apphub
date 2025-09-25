@@ -297,7 +297,7 @@ def patch_binary_rpath(binary_path, config):
         print(f"❌ Error: Unsupported architecture detected: {arch}. Aborting.")
         return
 
-    # -- Patch the RPATH of the executable.
+    # -- Patch the RPATH of the executable; the paths are relative to the path of the binary.
 
     try:
         rpath_parts = [
