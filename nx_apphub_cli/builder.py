@@ -308,11 +308,8 @@ def patch_binary_rpath(binary_path, config):
             f"$ORIGIN/../..{setlibpath}/{multiarch_triplet}",
             f"$ORIGIN/../..{setlibpath}64",
 
-            # -- App-specific plugin locations under /usr.
+            # -- Qt-specific plugin locations under /usr.
 
-            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/inkscape",
-            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/libproxy",
-            f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/pulseaudio",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/qml",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt6/qml",
             f"$ORIGIN/../../..{setlibpath}/{multiarch_triplet}/qt5/plugins",
@@ -321,11 +318,6 @@ def patch_binary_rpath(binary_path, config):
             f"$ORIGIN/../../..{setlibpath}/qt5/bin",
             f"$ORIGIN/../../..{setlibpath}/qt6/libexec",
             f"$ORIGIN/../../..{setlibpath}/qt6/bin",
-
-            # -- qmmp plugin dir, which is on an entirely different structure, because of course it is.
-
-            f"$ORIGIN/../..{setlibpath}/qmmp",
-            f"$ORIGIN/../..{setlibpath}/qmmp/plugins",
 
             # -- /lib multiarch.
 
@@ -337,11 +329,23 @@ def patch_binary_rpath(binary_path, config):
             f"$ORIGIN/../../lib",
             f"$ORIGIN/../../lib64",
         ]
+        extras = config.get("apprunconf", {}).get("extra_rpaths", [])
+        if isinstance(extras, str):
+            extras = [extras]
+        elif isinstance(extras, tuple):
+            extras = list(extras)
+        extras = [p for p in extras if isinstance(p, str) and p.strip()]
+        ordered = []
+        seen = set()
+        for p in rpath_parts + extras:
+            if p not in seen:
+                ordered.append(p)
+                seen.add(p)
 
-        rpath_value = ":".join(rpath_parts)
+        rpath_value = ":".join(ordered)
 
         subprocess.run(
-            ["patchelf", "--set-rpath", rpath_value, "--force-rpath", binary_path],
+            ["patchelf", "--set-rpath", rpath_value, "--force-rpath", str(binary_path)], 
             check=True
         )
         print(f"🩹 Patched RPATH for: {binary_path}")

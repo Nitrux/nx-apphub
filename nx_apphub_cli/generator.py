@@ -205,6 +205,7 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
             "setpath": "/usr/bin",
             "setlibpath": "/usr/lib",
             "envvars": {},
+            "extra_rpaths" : [],
             "prebuild_commands": []
         },
         "sandbox": {

@@ -106,6 +106,36 @@ def validate_yaml_config(config):
             if not isinstance(value, expected_type):
                 print(f"❌ Error: Invalid type for '{section}.{key}'. Expected {expected_type.__name__}, got {type(value).__name__}.\n")
                 sys.exit(1)
+    
+    # -- Validate apprunconf section.
+
+    apprunconf = config.get("apprunconf", {})
+
+    extra = apprunconf.get("extra_rpaths")
+    if extra is None:
+        apprunconf["extra_rpaths"] = []
+    elif isinstance(extra, str):
+        apprunconf["extra_rpaths"] = [extra]
+    elif isinstance(extra, list):
+        if not all(isinstance(x, str) for x in extra):
+            print("❌ Error: 'apprunconf.extra_rpaths' list must contain only strings.\n")
+            sys.exit(1)
+    else:
+        print("❌ Error: 'apprunconf.extra_rpaths' must be a string or a list of strings.\n")
+        sys.exit(1)
+
+    prebuild = apprunconf.get("prebuild_commands")
+    if prebuild is None:
+        apprunconf["prebuild_commands"] = []
+    elif isinstance(prebuild, list):
+        if not all(isinstance(x, str) for x in prebuild):
+            print("❌ Error: 'apprunconf.prebuild_commands' list must contain only strings.\n")
+            sys.exit(1)
+    else:
+        print("❌ Error: 'apprunconf.prebuild_commands' must be a list of strings.\n")
+        sys.exit(1)
+
+    config["apprunconf"] = apprunconf
 
     # -- Validate sandbox section.
 

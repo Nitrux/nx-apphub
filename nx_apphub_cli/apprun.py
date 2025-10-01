@@ -40,33 +40,43 @@ def generate_apprun(app_dir, config):
     setlibpath = get_apprunconf_value(config, "setlibpath", default="/usr/lib", expected_type=str)
     envvars = get_apprunconf_value(config, "envvars", default={}, expected_type=dict)
 
+    # -- Append to the base path in the generated AppRun.
+
+    yaml_ld_value = envvars.pop("LD_LIBRARY_PATH", None)
+    ld_append_line = ""
+    if yaml_ld_value:
+        if isinstance(yaml_ld_value, list):
+            extra_ld = ":".join(str(v) for v in yaml_ld_value if v)
+        else:
+            extra_ld = str(yaml_ld_value).strip()
+        if extra_ld:
+            ld_append_line = f'\nexport LD_LIBRARY_PATH="$LD_LIBRARY_PATH:{extra_ld}"'
+
     # -- Generate environment variable exports dynamically.
 
     env_exports = "\n".join([f'export {key}="{value}"' for key, value in envvars.items()])
 
     # -- Conditionally add initialization for Qt environment variables **only if they exist in envvars**.
 
-    qt_env_init = ""
-    if "QT_QPA_PLATFORM" in envvars:
-        qt_env_init += 'if [ -z "${QT_QPA_PLATFORM+x}" ]; then export QT_QPA_PLATFORM=""; fi\n'
-    if "QT_PLUGIN_PATH" in envvars:
-        qt_env_init += 'if [ -z "${QT_PLUGIN_PATH+x}" ]; then export QT_PLUGIN_PATH=""; fi\n'
-    if "QT_QML_IMPORT_PATH" in envvars:
-        qt_env_init += 'if [ -z "${QT_QML_IMPORT_PATH+x}" ]; then export QT_QML_IMPORT_PATH=""; fi\n'
-    if "QML_IMPORT_PATH" in envvars:
-        qt_env_init += 'if [ -z "${QML_IMPORT_PATH+x}" ]; then export QML_IMPORT_PATH=""; fi\n'
-    if "QML2_IMPORT_PATH" in envvars:
-        qt_env_init += 'if [ -z "${QML2_IMPORT_PATH+x}" ]; then export QML2_IMPORT_PATH=""; fi\n'
-    if "QTWEBENGINEPROCESS_PATH" in envvars:
-            qt_env_init += 'if [ -z "${QTWEBENGINEPROCESS_PATH+x}" ]; then export QTWEBENGINEPROCESS_PATH=""; fi\n'
-    if "QTWEBENGINE_RESOURCES_PATH" in envvars:
-            qt_env_init += 'if [ -z "${QTWEBENGINE_RESOURCES_PATH+x}" ]; then export QTWEBENGINE_RESOURCES_PATH=""; fi\n'
-    if "QTWEBENGINE_LOCALES_PATH" in envvars:
-            qt_env_init += 'if [ -z "${QTWEBENGINE_LOCALES_PATH+x}" ]; then export QTWEBENGINE_LOCALES_PATH=""; fi\n'
-    if "QT_QUICK_CONTROLS_STYLE" in envvars:
-            qt_env_init += 'if [ -z "${QT_QUICK_CONTROLS_STYLE+x}" ]; then export QT_QUICK_CONTROLS_STYLE=""; fi\n'
-    if "QT_QUICK_CONTROLS_MOBILE" in envvars:
-            qt_env_init += 'if [ -z "${QT_QUICK_CONTROLS_MOBILE+x}" ]; then export QT_QUICK_CONTROLS_MOBILE=""; fi\n'
+    qt_keys = [
+        "QT_QPA_PLATFORM",
+        "QT_PLUGIN_PATH",
+        "QT_QML_IMPORT_PATH",
+        "QML_IMPORT_PATH",
+        "QML2_IMPORT_PATH",
+        "QTWEBENGINEPROCESS_PATH",
+        "QTWEBENGINE_RESOURCES_PATH",
+        "QTWEBENGINE_LOCALES_PATH",
+        "QT_QUICK_CONTROLS_STYLE",
+        "QT_QUICK_CONTROLS_MOBILE",
+    ]
+
+    qt_lines = []
+    for key in qt_keys:
+        if key in envvars:
+            qt_lines.append(f'if [ -z "${{{key}+x}}" ]; then export {key}=""; fi')
+
+    qt_env_init = "\n".join(qt_lines)
 
     # -- Determine multiarch triplet dynamically.
 
@@ -138,16 +148,16 @@ if [ -z "${{LD_LIBRARY_PATH+x}}" ]; then export LD_LIBRARY_PATH=""; fi
 if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 
 
-# -- Set environment variables for proper execution inside the AppImage.
-
-export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin"
-export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR{setlibpath}/{multiarch_triplet}/inkscape:$APPDIR{setlibpath}/{multiarch_triplet}/libproxy:$APPDIR{setlibpath}/{multiarch_triplet}/pulseaudio:$APPDIR/lib:$APPDIR/lib64:$APPDIR/lib/{multiarch_triplet}:$APPDIR/lib64/{multiarch_triplet}:$APPDIR{setlibpath}/qmmp:$APPDIR{setlibpath}/qmmp/plugins"
-export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
-
-
 # -- Initialize Qt environment variables if required.
 
 {qt_env_init}
+
+
+# -- Set environment variables for proper execution inside the AppImage.
+
+export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin"
+export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR/lib:$APPDIR/lib64:$APPDIR/lib/{multiarch_triplet}:$APPDIR/lib64/{multiarch_triplet}"{ld_append_line}
+export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
 
 
 # -- Additional environment variables from YAML.

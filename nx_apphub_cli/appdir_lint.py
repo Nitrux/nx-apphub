@@ -26,11 +26,14 @@ import os
 import sys
 import subprocess
 import gzip
+import argparse
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 import requests
 import yaml
 import re
+from elftools.elf.elffile import ELFFile
 # <---
 # --->
 def detect_appdir(path):
@@ -191,6 +194,119 @@ def suggest_providing_packages(missing_libs, repos, quiet=True):
     return {lib: sorted(set(pkgs)) for lib, pkgs in suggestions.items()}
 
 
+def _read_dynamic_elf(path):
+    with open(path, "rb") as f:
+        elf = ELFFile(f)
+        dyn = elf.get_section_by_name(".dynamic")
+        if dyn is None:
+            return [], None, None
+        needed = []
+        rpath = None
+        runpath = None
+        for tag in dyn.iter_tags():
+            t = tag.entry.d_tag
+            if t == "DT_NEEDED":
+                needed.append(tag.needed)
+            elif t == "DT_RPATH":
+                r = tag.rpath
+                rpath = r.decode() if isinstance(r, bytes) else r
+            elif t == "DT_RUNPATH":
+                r = tag.runpath
+                runpath = r.decode() if isinstance(r, bytes) else r
+        return needed, rpath, runpath
+
+
+def _expand_origin_paths(raw, origin):
+    if not raw:
+        return []
+    out = []
+    for entry in raw.split(":"):
+        out.append(entry.replace("$ORIGIN", str(origin)).replace("${ORIGIN}", str(origin)))
+    return out
+
+
+def _elf_search_paths(binary_path, appdir_path, rpath, runpath, extra=None):
+    origin = Path(binary_path).parent.resolve()
+    paths = []
+    env = os.environ.get("LD_LIBRARY_PATH")
+    if env:
+        paths.extend([p for p in env.split(":") if p])
+    paths.extend(_expand_origin_paths(runpath, origin))
+    paths.extend(_expand_origin_paths(rpath, origin))
+    if appdir_path:
+        paths.extend([
+            str(appdir_path / "usr/lib"),
+            str(appdir_path / "usr/lib64"),
+            str(appdir_path / "usr/lib/x86_64-linux-gnu"),
+            str(appdir_path / "usr/lib/aarch64-linux-gnu"),
+            str(appdir_path / "lib"),
+            str(appdir_path / "lib64"),
+        ])
+    if extra:
+        paths.extend(extra)
+    seen = set()
+    uniq = []
+    for p in paths:
+        if p and p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+
+def verify_elf_dependencies(binary, appdir):
+    b = Path(binary).resolve()
+    needed, rpath, runpath = _read_dynamic_elf(b)
+    cpaths = _elf_search_paths(b, Path(appdir).resolve(), rpath, runpath)
+    resolved = {}
+    missing = []
+    for soname in needed:
+        hit = None
+        for base in cpaths:
+            cand = Path(base) / soname
+            if cand.exists():
+                hit = str(cand)
+                break
+        if hit:
+            resolved[soname] = hit
+        else:
+            missing.append(soname)
+    return {"binary": str(b), "needed": needed, "rpath": rpath, "runpath": runpath, "search_paths": cpaths, "resolved": resolved, "missing": missing}
+
+
+def run_elf_checks(appdir):
+    results = []
+    for root, dirs, files in os.walk(appdir):
+        for file in files:
+            full_path = Path(root) / file
+            if is_elf(full_path):
+                try:
+                    results.append(verify_elf_dependencies(str(full_path), appdir))
+                except Exception:
+                    pass
+    return results
+
+
+def write_elf_report(appdir, details, report_path=None):
+    if report_path is None:
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        report_dir = Path.home() / ".cache/nx-apphub-cli/reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_path = report_dir / f"elf-check-{Path(appdir).name}-{ts}.txt"
+    with open(report_path, "w", encoding="utf-8") as f:
+        for d in details:
+            f.write(d["binary"] + "\n")
+            if d["runpath"] is not None:
+                f.write(f"  RUNPATH: {d['runpath']}\n")
+            if d["rpath"] is not None:
+                f.write(f"  RPATH:   {d['rpath']}\n")
+            if d["needed"]:
+                f.write(f"  NEEDED:  {', '.join(d['needed'])}\n")
+            if d["missing"]:
+                f.write(f"  MISSING: {', '.join(d['missing'])}\n")
+            f.write("\n")
+    return str(report_path)
+
+
 def run_linter(args=None):
     if args is None:
         parser = argparse.ArgumentParser(description="Check missing shared libraries in an AppDir.")
@@ -214,6 +330,12 @@ def run_linter(args=None):
     print(f"🔍 Scanning AppDir: {appdir_path}\n")
     missing = find_missing_libs(appdir_path)
 
+    details = run_elf_checks(appdir_path)
+    any_missing = [d for d in details if d["missing"]]
+    if any_missing:
+        report_path = write_elf_report(appdir_path, any_missing)
+        print(f"🧩 ELF dependency details: {report_path}\n")
+
     if not missing:
         print("✅ No missing shared libraries found.\n")
         return
@@ -227,24 +349,21 @@ def run_linter(args=None):
 
     # -- Load YAML config to retrieve repositories.
 
-    yaml_path = args.yaml if hasattr(args, "yaml") else None
-    if not yaml_path or not os.path.isfile(yaml_path):
-        print("⚠️  No YAML config provided. Skipping package suggestions.\n")
-        return
+    yaml_path = getattr(args, "yaml", None)
+    if yaml_path and os.path.isfile(yaml_path):
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
 
-    with open(yaml_path, 'r') as f:
-        config = yaml.safe_load(f)
+        repos = config.get("buildinfo", {}).get("distrorepo", [])
+        if isinstance(repos, dict):
+            repos = repos.get("base", []) or []
 
-    repos = config.get("buildinfo", {}).get("distrorepo", [])
-    if isinstance(repos, dict):
-        repos = repos.get("base", [])
-
-    print("💡 Suggesting Debian packages that may provide the missing libraries...\n")
-    suggestions = suggest_providing_packages(missing.keys(), repos)
-    for lib in missing:
-        pkgs = suggestions.get(lib)
-        if pkgs:
-            print(f"   ➤ {lib}: suggested packages → {', '.join(sorted(pkgs))}")
-        else:
-            print(f"   ➤ {lib}: no suggestion found")
-    print()
+        print("💡 Suggesting Debian packages that may provide the missing libraries...\n")
+        suggestions = suggest_providing_packages(missing.keys(), repos)
+        for lib in missing:
+            pkgs = suggestions.get(lib)
+            if pkgs:
+                print(f"   ➤ {lib}: suggested packages → {', '.join(sorted(pkgs))}")
+            else:
+                print(f"   ➤ {lib}: no suggestion found")
+        print()
