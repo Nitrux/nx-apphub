@@ -322,6 +322,11 @@ def patch_binary_rpath(binary_path, config):
             f"$ORIGIN/../../..{setlibpath}/qt6/libexec",
             f"$ORIGIN/../../..{setlibpath}/qt6/bin",
 
+            # -- qmmp plugin dir, which is on an entirely different structure, because of course it is.
+
+            f"$ORIGIN/../..{setlibpath}/qmmp",
+            f"$ORIGIN/../..{setlibpath}/qmmp/plugins",
+
             # -- /lib multiarch.
 
             f"$ORIGIN/../../lib/{multiarch_triplet}",

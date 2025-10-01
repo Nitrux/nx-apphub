@@ -31,7 +31,6 @@ from pathlib import Path
 import requests
 import yaml
 import re
-from elftools.elf.elffile import ELFFile
 # <---
 # --->
 def detect_appdir(path):
@@ -42,11 +41,6 @@ def detect_appdir(path):
     if (path / "squashfs-root").is_dir():
         return path / "squashfs-root"
     return path
-
-
-def is_valid_appdir(path):
-    """Check if the path is a plausible AppDir or squashfs-root."""
-    return path.is_dir() and path.name == "squashfs-root" and (path / "AppRun").is_file()
 
 
 def is_elf(path):
