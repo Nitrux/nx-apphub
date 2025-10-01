@@ -28,7 +28,8 @@ file
 firejail
 fuse3
 git
-libfuse2t64 || libfuse2
+kf6-breeze-icon-theme || luv-icon-theme
+libfuse2t64 || libfuse2 
 patchelf
 zstd
 ```
