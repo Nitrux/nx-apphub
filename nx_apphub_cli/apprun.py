@@ -69,6 +69,7 @@ def generate_apprun(app_dir, config):
         "QTWEBENGINE_LOCALES_PATH",
         "QT_QUICK_CONTROLS_STYLE",
         "QT_QUICK_CONTROLS_MOBILE",
+        "QT_DEBUG_PLUGINS",
     ]
 
     qt_lines = []
