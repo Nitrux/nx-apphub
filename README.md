@@ -14,7 +14,7 @@ For more in-depth information about NX AppHub CLI, please see the [Wiki](https:/
 
 ## Requirements
 
-- Nitrux 4.0.0 and newer.
+- Nitrux 5.0.0 and newer.
     - _♦ Information: To use `nx-apphub-cli` in previous versions of Nitrux use a container; see our tutorial on [how to use Distrobox](https://nxos.org/tutorial/how-to-use-distrobox-in-nitrux/)._
 - Python 3.10 and newer.
 
