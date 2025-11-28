@@ -1,47 +1,26 @@
 #!/usr/bin/env python3
-
-#############################################################################################################################################################################
-#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
-#                                                                                                                                                                           #
-#   Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
-#                                                                                                                                                                           #
-#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
-#                                                                                                                                                                           #
-#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
-#                                                                                                                                                                           #
-#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
-#       in the documentation and/or other materials provided with the distribution.                                                                                         #
-#                                                                                                                                                                           #
-#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
-#       without specific prior written permission.                                                                                                                          #
-#                                                                                                                                                                           #
-#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
-#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
-#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
-#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
-#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
-#############################################################################################################################################################################
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>
 
 import gzip
 import lzma
 import random
-import re
-import sys
 import time
 from io import BytesIO
 from urllib.parse import urljoin, urlparse
 from collections import defaultdict
 from pathlib import Path
 from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from debian import debian_support
 from tqdm import tqdm
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .utils import cleanup_cache
+from .exceptions import DownloadError
+
 # <---
 # --->
 # -- Base cache directory for downloads.
@@ -49,7 +28,7 @@ from .utils import cleanup_cache
 cache_dir = Path.home() / ".cache/nx-apphub-cli"
 
 
-# -- Mirors for supported distributions.
+# -- Mirrors for supported distributions.
 
 debian_mirrors = [
     "https://ftp.debian.org/debian",
@@ -65,7 +44,7 @@ ubuntu_mirrors = [
 ]
 
 ubuntu_ports_mirrors = [
-    "https://ports.ubuntu.com/ubuntu-ports/",
+    "https://ports.ubuntu.com/ubuntu-ports",
 ]
 
 devuan_mirrors = [
@@ -73,7 +52,7 @@ devuan_mirrors = [
 ]
 
 kde_neon_mirrors = [
-    "https://origin.archive.neon.kde.org/stable/",
+    "https://origin.archive.neon.kde.org/stable",
 ]
 
 nitrux_mirrors = [
@@ -86,11 +65,10 @@ zbkit_mirrors = [
 ]
 
 
-# -- Debounce per host.
+# -- Caching and Locks
 
-last_access_time = {}
-access_lock = Lock()
-MIN_DELAY_PER_HOST = 0.3
+cache_lock = Lock()
+metadata_cache = {}
 
 
 # -- Use retry strategy and session reuse for connection pooling.
@@ -103,8 +81,6 @@ retry_strategy = Retry(
 adapter = HTTPAdapter(max_retries=retry_strategy)
 
 session = requests.Session()
-
-metadata_cache = {}
 session.mount("http://", adapter)
 session.mount("https://", adapter)
 
@@ -161,7 +137,7 @@ def build_probe_tasks(repos, pkg_name, quiet):
     return tasks
 
 
-def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
+def get_latest_deb(pkg_name, repos, package_name, log_lock, stop_event=None, quiet=True):
     """Download the latest .deb package for the given pkg_name by probing all mirrors concurrently using threads."""
 
     excluded_packages = {
@@ -203,12 +179,15 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
             print(f"\n\n        ⚠️ Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppImage.\n")
         return None
 
+    if stop_event and stop_event.is_set():
+        raise DownloadError("Download cancelled.")
+
     package_dir = cache_dir / package_name
     deb_dir = package_dir / "debs"
     deb_dir.mkdir(parents=True, exist_ok=True)
 
     if not repos:
-        raise RuntimeError(f"❌ Error: No valid repositories provided for {pkg_name}.")
+        raise DownloadError(f"No valid repositories provided for {pkg_name}.")
 
     probe_tasks = build_probe_tasks(repos, pkg_name, quiet)
 
@@ -219,14 +198,17 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
 
     for repo in repos:
         if "ppa" in repo:
-            candidate = fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet)
+            candidate = fetch_from_ppa(pkg_name, repo, deb_dir, quiet)
             if candidate:
                 candidates.append(candidate)
 
     def probe_mirror(task):
-        mirror, release, arch, pkg_name, component = task
+        if stop_event and stop_event.is_set():
+            return (task, None, None, Exception("Download cancelled"))
+
+        mirror, release, arch, _, component = task
         try:
-            result, status_msg = fetch_package_metadata(mirror, release, arch, pkg_name, component)
+            result, status_msg = fetch_package_metadata(mirror, release, arch, pkg_name, component, stop_event=stop_event)
             return (task, result, status_msg, None)
         except Exception as e:
             return (task, None, None, e)
@@ -234,7 +216,11 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
     with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_task = {executor.submit(probe_mirror, task): task for task in probe_tasks}
         for future in as_completed(future_to_task):
-            mirror, release, arch, pkg_name, component = future_to_task[future]
+            if stop_event and stop_event.is_set():
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise DownloadError("Download cancelled during mirror probing.")
+
+            mirror, _, _, pkg_name_task, component = future_to_task[future]
             try:
                 _, result, status_msg, exception = future.result()
                 if result:
@@ -245,7 +231,7 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
                         "version": version,
                         "version_str": version_str,
                         "url": deb_url,
-                        "path": deb_dir / f"{pkg_name}.deb",
+                        "path": deb_dir / f"{pkg_name_task}.deb",
                         "source": f"{mirror} [{component}]"
                     })
                 elif status_msg and not quiet:
@@ -256,7 +242,8 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
                     else:
                         mirror_logs.append(status_msg)
                 elif exception and not quiet:
-                    mirror_logs.append(f"⛔ Unhandled error for: {pkg_name} from: {mirror} [{component}]: {exception}")
+                    if "Download cancelled" not in str(exception):
+                        mirror_logs.append(f"⛔ Unhandled error for: {pkg_name_task} from: {mirror} [{component}]: {exception}")
             except Exception as e:
                 if not quiet:
                     mirror_logs.append(f"⛔ Unexpected error for: {pkg_name}: {e}")
@@ -270,7 +257,12 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
             tqdm.write("\n" + "\n".join(f"        {msg}" for msg in mirror_logs))
 
     if not candidates:
-        raise RuntimeError(f"Unable to find '{pkg_name}' in any repository after probing {len(probe_tasks)} mirror/component pairs.")
+        msg = f"Unable to find '{pkg_name}' after probing {len(probe_tasks)} mirror/component pairs. Aborting."
+        if log_lock:
+            with log_lock:
+                tqdm.write(f"❌ {msg}")
+                tqdm.write("")
+        raise DownloadError(msg)
 
     version_groups = defaultdict(list)
     for c in candidates:
@@ -294,14 +286,18 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
             tqdm.write(f"        🔹 Source:  {best['source']}\n")
             tqdm.write(f"        📥 Downloading: {pkg_name} from: {best['url']}...\n")
 
+    if stop_event and stop_event.is_set():
+        raise DownloadError("Download cancelled.")
+
     download_errors = []
 
     for candidate in shuffled_candidates:
+        if stop_event and stop_event.is_set(): break
         url = candidate["url"]
         path = candidate["path"]
         try:
             return download_file(url, path, quiet=quiet)
-        except RuntimeError as e:
+        except DownloadError as e:
             download_errors.append(f"{pkg_name}: {e} ← {url}")
 
     for candidate in shuffled_candidates:
@@ -311,39 +307,53 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, quiet=True):
             if not quiet:
                 tqdm.write(f"        🔁 Retrying download for: {pkg_name} from: {url}")
             return download_file(url, path, quiet=quiet)
-        except RuntimeError as e:
+        except DownloadError as e:
             download_errors.append(f"{pkg_name} (retry): {e} ← {url}")
 
     if not quiet and download_errors and log_lock:
         with log_lock:
             tqdm.write("\n" + "\n".join(f"        ⚠️ {msg}" for msg in download_errors) + "\n")
 
-    raise RuntimeError(f"⛔ All mirrors failed to download: {pkg_name}.")
+    msg = f"All mirrors failed to download: {pkg_name}."
+
+    if log_lock:
+        with log_lock:
+            tqdm.write(f"❌ {msg}")
+            tqdm.write("")
+    raise DownloadError(msg)
 
 
-def fetch_package_metadata(mirror, release, arch, pkg_name, component="main", retries=3):
+def fetch_package_metadata(mirror, release, arch, pkg_name, component="main", stop_event=None, retries=3):
     """Fetch the package filename and version from repository metadata, with retry and .xz fallback."""
-    
+
     base_url = f"{mirror}/dists/{release}/{component}/binary-{arch}/"
     urls_to_try = [base_url + "Packages.gz", base_url + "Packages.xz"]
-    
+
     delay_range = (0.2, 0.6)
     cache_key = (mirror, release, arch, component)
 
-    if cache_key in metadata_cache:
-        lines = metadata_cache[cache_key]
-    else:
-        lines = None
+    with cache_lock:
+        if cache_key in metadata_cache:
+            lines = metadata_cache[cache_key]
+        else:
+            lines = None
+
+    if lines is None:
         for url in urls_to_try:
+            if stop_event and stop_event.is_set():
+                return None, "Download cancelled"
+
             for attempt in range(1, retries + 1):
+                if stop_event and stop_event.is_set():
+                    return None, "Download cancelled"
+
                 try:
                     response = session.get(url, timeout=20, stream=True)
-                    
+
                     if response.status_code == 404:
-                        break 
+                        break
 
                     response.raise_for_status()
-                    
                     content = response.content
                     if url.endswith(".gz"):
                         with gzip.open(BytesIO(content), "rt", encoding="utf-8", errors="ignore") as f:
@@ -351,16 +361,16 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main", re
                     elif url.endswith(".xz"):
                         with lzma.open(BytesIO(content), "rt", encoding="utf-8", errors="ignore") as f:
                             lines = f.readlines()
-                    
                     if lines:
-                        metadata_cache[cache_key] = lines
-                        break 
+                        with cache_lock:
+                            metadata_cache[cache_key] = lines
+                        break
 
                 except requests.exceptions.RequestException as e:
                     if attempt < retries:
                         time.sleep(random.uniform(*delay_range))
                         continue
-                    
+
                     if isinstance(e, requests.exceptions.Timeout):
                         reason = "⌛ Timeout"
                     elif isinstance(e, requests.exceptions.ConnectionError):
@@ -372,13 +382,12 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main", re
 
                     mirror_host = urlparse(url).hostname
                     return None, f"⭢ 🚧 Unable to fetch metadata from: {mirror_host}: {reason} (after {retries} attempts)"
-            
+
             if lines:
                 break
 
     if not lines:
         return None, f"⛔ No metadata for: '{pkg_name}' from: '{mirror}' in [{component}]"
-        tqdm.write("")
 
     current_package = None
     filename = None
@@ -404,7 +413,7 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main", re
     return None, f"⛔ No metadata for: '{pkg_name}' from: '{mirror}' in [{component}]"
 
 
-def fetch_from_ppa(pkg_name, repo, package_name, deb_dir, quiet=True):
+def fetch_from_ppa(pkg_name, repo, deb_dir, quiet=True):
 
     ppa = repo["ppa"].strip()
     if not ppa or "/" not in ppa:
@@ -465,34 +474,14 @@ def download_file(url, destination, quiet=True):
 
     except requests.exceptions.RequestException as e:
         if isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
-            raise RuntimeError(f"🧾 HTTP {e.response.status_code}")
+            raise DownloadError(f"🧾 HTTP {e.response.status_code}") from e
         elif isinstance(e, requests.exceptions.SSLError):
-            raise RuntimeError("🔒 SSL error")
+            raise DownloadError("🔒 SSL error") from e
         elif isinstance(e, requests.exceptions.Timeout):
-            raise RuntimeError("⌛ Timeout")
+            raise DownloadError("⌛ Timeout") from e
         elif isinstance(e, requests.exceptions.ConnectionError):
             if "NameResolutionError" in str(e):
-                raise RuntimeError("🌐 DNS resolution failed")
-            raise RuntimeError("🔌 Connection failed")
+                raise DownloadError("🌐 DNS resolution failed") from e
+            raise DownloadError("🔌 Connection failed") from e
         else:
-            raise RuntimeError(f"⚠️ {e.__class__.__name__}")
-
-
-def print_grouped_logs(logs):
-    """Group and print logs with visual separation by error type."""
-    fetch_errors = [msg for msg in logs if "Failed to fetch metadata" in msg]
-    decompress_errors = [msg for msg in logs if "Failed to decompress metadata" in msg]
-    no_metadata = [msg for msg in logs if "No metadata" in msg]
-    unhandled = [msg for msg in logs if msg not in fetch_errors + decompress_errors + no_metadata]
-
-    if fetch_errors:
-        print("\n" + "\n".join(f" {line}" for line in fetch_errors))
-
-    if decompress_errors:
-        print("\n" + "\n".join(f" {line}" for line in decompress_errors))
-
-    if no_metadata:
-        print("\n" + "\n".join(f" {line}" for line in no_metadata))
-
-    if unhandled:
-        print("\n" + "\n".join(f" {line}" for line in unhandled))
+            raise DownloadError(f"⚠️ {e.__class__.__name__}") from e

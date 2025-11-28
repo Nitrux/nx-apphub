@@ -44,21 +44,32 @@ To install NX AppHub CLI we recommend using `pipx`.
 pipx install git+https://github.com/Nitrux/nx-apphub.git
 ```
 
-> _⚠️ Important: pipx will install `nx-apphub-cli` to `$HOME/.local/bin`, add this directory to `$PATH`._
+> _⚠️ Important: pipx will install `nx-apphub-cli` to `$HOME/.local/bin`, run `pipx ensurepath` to add this directory to `$PATH`._
+
 
 ## System-wide
 
 ```
-pipx install --global git+https://github.com/Nitrux/nx-apphub.git
+sudo pipx install --global git+https://github.com/Nitrux/nx-apphub.git
 ```
 
 # Uninstallation
 
 To uninstall NX AppHub CLI, do the following.
 
+## Single-user
+
 ```
 pipx uninstall nx-apphub-cli
 ```
+
+
+## System-wide
+
+```
+sudo pipx uninstall --global nx-apphub-cli
+```
+
 
 # Usage
 
@@ -105,7 +116,8 @@ nx-apphub-cli generate \
   --release testing \
   --arch amd64 \
   --components main \
-  --output mc.yml
+  --output mc.yml \
+  --description-output app_description.md
 ```
 
 # Licensing

@@ -1,0 +1,42 @@
+[MASTER]
+ignore-patterns=venv
+
+[MESSAGES CONTROL]
+# Disable warnings that are appropriate for CLI tools, not libraries.
+disable =
+    W0718,
+    W0703,
+    W1309,
+    C0114,
+    C0116,
+    C0301,
+    W1514,
+    W0707,
+
+[FORMAT]
+max-line-length = 120
+
+[VARIABLES]
+# Allow intentionally unused variables like "_ = value"
+ignored-variables = _
+
+# Treat names starting with "_" as intentionally unused
+additional-builtins = _
+
+[REPORTS]
+# Use simple output
+output-format = text
+reports = no
+
+[DESIGN]
+# Nx-apphub-cli commands have long functions; don't warn about it
+max-branches = 20
+max-locals = 25
+max-returns = 10
+
+[TYPECHECK]
+# Allow dynamic attributes added via SimpleNamespace
+ignored-classes = types.SimpleNamespace
+
+[LOGGING]
+logging-format-style = new

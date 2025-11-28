@@ -1,26 +1,6 @@
 #!/usr/bin/env python3
-
-#############################################################################################################################################################################
-#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
-#                                                                                                                                                                           #
-#   Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
-#                                                                                                                                                                           #
-#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
-#                                                                                                                                                                           #
-#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
-#                                                                                                                                                                           #
-#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
-#       in the documentation and/or other materials provided with the distribution.                                                                                         #
-#                                                                                                                                                                           #
-#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
-#       without specific prior written permission.                                                                                                                          #
-#                                                                                                                                                                           #
-#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
-#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
-#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
-#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
-#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
-#############################################################################################################################################################################
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>
 
 import argparse
 import re
@@ -33,23 +13,24 @@ from pathlib import Path
 
 import yaml
 
+from .exceptions import NxAppHubError, ConfigError, BuildError
 from .appdir_lint import run_linter
 from .builder import prepare_appimage, setup_appimage_directories
 from .config import load_yaml_config, validate_yaml_config
-from .downloader import get_latest_deb
-from .extractor import extract_deb
 from .generator import generate_yaml, generate_description_md
 from .manager import install, remove, search, show, update, downgrade
-from .utils import infer_lint_metadata_from_yaml, get_architecture, concurrent_downloads
+from .utils import get_architecture, concurrent_downloads
+
 # <---
 # --->
 def main():
+    """Entry point for the nx-apphub-cli command-line interface."""
     try:
         parser = argparse.ArgumentParser(
         prog="nx-apphub-cli",
         description="NX AppHub CLI — Lightweight command-line tool for managing and building applications in Nitrux."
         )
-        
+
         subparsers = parser.add_subparsers(
             dest="command",
             title="Commands",
@@ -73,7 +54,7 @@ def main():
         subparser_search = subparsers.add_parser("search", help="Search for specific applications")
         subparser_search.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to search for")
 
-        subparser_show = subparsers.add_parser("show", help="Show installed applications")
+        subparsers.add_parser("show", help="Show installed applications")
 
         # -- Building command (requires YAML file).
 
@@ -110,16 +91,10 @@ def main():
         elif args.command == "show":
             show()
         elif args.command == "build":
-            print(f"\n[ 🛠  Building local AppImage... ]\n")
+            print("\n[ 🛠  Building local AppImage... ]\n")
 
-            # -- Validate the YAML before doing anything else.
-
-            try:
-                config = load_yaml_config(args.config)
-                validate_yaml_config(config)
-            except ValueError as e:
-                print(f"❌ Error: {e}\n")
-                sys.exit(1)
+            config = load_yaml_config(args.config)
+            validate_yaml_config(config)
 
             package_name = config["buildinfo"]["name"]
 
@@ -138,8 +113,7 @@ def main():
                 for repo in repo_group:
                     for key in ["distro", "release", "arch"]:
                         if key not in repo:
-                            print(f"❌ Error: Missing required key '{key}' in repo: {repo}")
-                            sys.exit(1)
+                            raise ConfigError(f"Missing required key '{key}' in repo: {repo}")
 
             distrorepo = config["buildinfo"].get("distrorepo", {})
 
@@ -172,10 +146,9 @@ def main():
 
                 if not lint_target.exists():
                     if not appimage_path.exists():
-                        print(f"\n❌ AppImage not found: {appimage_path}\n")
-                        sys.exit(1)
+                        raise BuildError(f"AppImage not found: {appimage_path}")
 
-                    print(f"📦 Extracting AppImage to squashfs-root/...")
+                    print("📦 Extracting AppImage to squashfs-root/...")
 
                     try:
                         subprocess.run(
@@ -196,15 +169,11 @@ def main():
                             )
                             print("✅ Successfully fixed and extracted AppImage.\n")
                         except Exception as e:
-                            print(f"❌ Failed to extract AppImage after fixing permissions: {e}\n")
-                            sys.exit(1)
+                            raise BuildError(f"Failed to extract AppImage after fixing permissions: {e}")
                     except subprocess.CalledProcessError as e:
-                        print(f"❌ Failed to extract AppImage: {e}\n")
-                        sys.exit(1)
+                        raise BuildError(f"Failed to extract AppImage: {e}")
 
                     lint_target = Path("squashfs-root")
-
-                lint_meta = infer_lint_metadata_from_yaml(args.config)
 
                 lint_args = types.SimpleNamespace(
                     appdir=str(lint_target),
@@ -219,8 +188,6 @@ def main():
         elif args.command == "generate":
             integration_key = args.integration_type
 
-            runtime = "classic"
-
             yaml_data, fields = generate_yaml(
                 args.package,
                 args.distro,
@@ -232,12 +199,12 @@ def main():
             if yaml_data:
                 current_year = datetime.now().year
                 header_lines = [
-                    f"# YAML build file",
+                    "# YAML build file",
                     f"# nx-apphub-cli {current_year} (c) Nitrux Latinoamericana S.C.",
                     ""
                 ]
 
-                with open(args.output, "w") as f:
+                with open(args.output, "w", encoding="utf-8") as f:
                     f.write("\n".join(header_lines) + "\n")
 
                     yaml_buffer = StringIO()
@@ -294,7 +261,7 @@ def main():
 
                 if args.description_output and fields:
                     md = generate_description_md(fields)
-                    with open(args.description_output, "w") as desc:
+                    with open(args.description_output, "w", encoding="utf-8") as desc:
                         desc.write(md)
                     print(f"📝 Description template written to: {args.description_output}")
                 print()
@@ -302,8 +269,11 @@ def main():
             parser.print_help()
             sys.exit(1)
     except KeyboardInterrupt:
-        print("\n🛑 Interrupted by user. Exiting cleanly.\n")
+        print("🛑 Interrupted by SIGINT. Exiting cleanly.\n")
         sys.exit(130)
+    except NxAppHubError as e:
+        print(f"\n❌ Error: {e}\n")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

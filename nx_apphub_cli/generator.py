@@ -1,36 +1,16 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>
 
-#############################################################################################################################################################################
-#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
-#                                                                                                                                                                           #
-#   Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
-#                                                                                                                                                                           #
-#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
-#                                                                                                                                                                           #
-#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
-#                                                                                                                                                                           #
-#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
-#       in the documentation and/or other materials provided with the distribution.                                                                                         #
-#                                                                                                                                                                           #
-#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
-#       without specific prior written permission.                                                                                                                          #
-#                                                                                                                                                                           #
-#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
-#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
-#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
-#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
-#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
-#############################################################################################################################################################################
-
-import argparse
 import gzip
 import lzma
 import re
 from io import BytesIO
-from pathlib import Path
 
 import requests
-import yaml
+
+from .exceptions import GeneratorError
+
 # <---
 # --->
 # -- Packages to exclude from being added to the YAML.
@@ -62,7 +42,7 @@ distro_mirrors = {
         "http://deb.devuan.org/merged",
     ],
     "kde-neon": [
-        "https://origin.archive.neon.kde.org/stable/",
+        "https://origin.archive.neon.kde.org/stable",
     ],
     "nitrux": [
         "https://packagecloud.io/nitrux/mauikit/debian",
@@ -73,20 +53,23 @@ distro_mirrors = {
 
 def fetch_repository_metadata(distro, release, arch, components):
     metadata = ""
-    mirrors = distro_mirrors.get(distro, [])
+    mirrors = distro_mirrors.get(distro)
+
+    if mirrors is None:
+        raise GeneratorError(f"Unknown distribution '{distro}'. Supported: {', '.join(distro_mirrors.keys())}")
 
     for mirror in mirrors:
         for component in components:
             base_url = f"{mirror}/dists/{release}/{component}/binary-{arch}/"
             urls_to_try = [base_url + "Packages.gz", base_url + "Packages.xz"]
-            
+
             for url in urls_to_try:
                 try:
                     r = requests.get(url, timeout=10)
 
                     if r.status_code == 404:
                         continue
-                    
+
                     r.raise_for_status()
 
                     content = r.content
@@ -96,13 +79,13 @@ def fetch_repository_metadata(distro, release, arch, components):
                     elif url.endswith(".xz"):
                         with lzma.open(BytesIO(content), 'rt', encoding='utf-8', errors='ignore') as f:
                             metadata += f.read()
-                    
+
                     break
 
                 except requests.exceptions.RequestException as e:
                     print(f"🚧 Could not fetch metadata from the repository.")
                     print(f"  ↪ URL: {url}")
-                    
+
                     if hasattr(e, 'response') and e.response is not None:
                         print(f"  ↪ Issue: The server returned a '{e.response.status_code} {e.response.reason}' error.")
                     else:
@@ -161,20 +144,24 @@ def parse_fields(entry):
     return fields
 
 
-def generate_yaml(package_name, distro, release, arch, components, integration_key="gui_app", runtime="classic"):
+def generate_yaml(package_name, distro, release, arch, components, integration_key="gui", runtime="classic"):
     metadata = fetch_repository_metadata(distro, release, arch, components)
+
     if not metadata:
-        return None, None
+        raise GeneratorError(
+            f"Could not fetch metadata for {distro}/{release}.\n"
+            "Please check your internet connection or the distribution parameters (release, components)."
+        )
 
     entry = parse_package_info(package_name, metadata)
     if not entry:
-        print()
-        print(f"🚧 Unable to find '{package_name}' in the repository metadata.")
-        print(f"  ↪ (Searched in Distro: {distro}, Release: {release}, Components: {', '.join(components)})")
-        print()
-        print(f"👉 Tip: The package might be in a different component. Try adding them to your command, e.g.: --components main universe")
-        print()
-        return None, None
+        raise GeneratorError(
+            f"Unable to find '{package_name}' in the repository metadata.\n"
+            f"  ↪ (Searched in Distro: {distro}, Release: {release}, Components: {', '.join(components)})\n"
+            "\n"
+            "👉 Tip: The package might be in a different component. "
+            "Try adding them to your command, e.g.: --components main universe"
+        )
 
     fields = parse_fields(entry)
 
@@ -220,7 +207,12 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
 
 def generate_description_md(fields):
     name = fields.get("Package", "UNKNOWN")
-    summary = fields.get("Description", "No summary available").split("--", 1)[-1].strip()
+    desc_raw = fields.get("Description", "No summary available")
+    try:
+        summary = desc_raw.split("--", 1)[-1].strip()
+    except IndexError:
+        summary = desc_raw.splitlines()[0] if desc_raw else "No summary available"
+
     full_desc = fields.get("Description", "No description provided.")
     apphub_category = fields.get("Category", "Not specified in metadata.")
     homepage = fields.get("Homepage", "https://example.com")

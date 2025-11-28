@@ -1,26 +1,6 @@
 #!/usr/bin/env python3
-
-#############################################################################################################################################################################
-#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
-#                                                                                                                                                                           #
-#   Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
-#                                                                                                                                                                           #
-#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
-#                                                                                                                                                                           #
-#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
-#                                                                                                                                                                           #
-#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
-#       in the documentation and/or other materials provided with the distribution.                                                                                         #
-#                                                                                                                                                                           #
-#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
-#       without specific prior written permission.                                                                                                                          #
-#                                                                                                                                                                           #
-#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
-#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
-#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
-#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
-#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
-#############################################################################################################################################################################
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>
 
 import os
 import sys
@@ -29,16 +9,17 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .exceptions import BuildError
 from .config import get_apprunconf_value
 from .utils import cleanup_cache, get_appimagetool, get_go_appimagetool, get_uruntime, get_architecture
 from .apprun import generate_apprun
+
 # <---
 # --->
 # -- Base working directory for all packages.
 
 app_base_dir = Path.home() / ".cache/nx-apphub-cli"
 local_bin = Path.home() / ".local/bin"
-appimagetool_path = local_bin / "appimagetool"
 
 
 def setup_appimage_directories(app_name, binary_path):
@@ -88,7 +69,7 @@ def find_system_icon(icon_name, app_dir, preferred_theme=None):
 def get_icon_name_from_desktop(app_dir):
     """Attempt to extract icon name from a .desktop file."""
     for file in app_dir.glob("*.desktop"):
-        with file.open() as f:
+        with file.open(encoding="utf-8") as f:
             for line in f:
                 if line.startswith("Icon="):
                     return line.strip().split("=", 1)[1]
@@ -126,9 +107,9 @@ def copy_system_icon(app_name, app_dir, config, icon_path, quiet=True):
             print(f"✔️ Using icon from AppDir: {icon_dest.name}")
         return
 
-    raise FileNotFoundError(
-        f"❌ Error: No icon found for '{icon_name}'.\n"
-        "\n   👉 Tip: This usually happens when the icon theme is missing in the AppDir or build system."
+    raise BuildError(
+        f"No icon found for '{icon_name}'. "
+        "This usually happens when the icon theme is missing in the AppDir or build system."
     )
 
 
@@ -140,7 +121,7 @@ def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False):
 
     def is_valid_desktop(path):
         try:
-            with path.open() as f:
+            with path.open(encoding="utf-8") as f:
                 lines = f.readlines()
                 has_name = any(line.strip().startswith("Name=") for line in lines)
                 has_exec = any(line.strip().startswith("Exec=") for line in lines)
@@ -183,16 +164,14 @@ def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False):
 
         # -- Patch Exec if necessary.
 
-        lines = desktop_file_path.read_text().splitlines()
+        lines = desktop_file_path.read_text(encoding="utf-8").splitlines()
         updated_lines = []
-        patched_exec = False
         found_nodisplay = False
 
         for line in lines:
             if line.startswith("Exec="):
                 if f"/usr/bin/{binary_path.name}" not in line:
                     updated_lines.append(f"Exec=/usr/bin/{binary_path.name}")
-                    patched_exec = True
                 else:
                     updated_lines.append(line)
             elif line.startswith("NoDisplay="):
@@ -204,7 +183,7 @@ def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False):
         if hide_from_menu and not found_nodisplay:
             updated_lines.append("NoDisplay=true")
 
-        desktop_file_path.write_text("\n".join(updated_lines) + "\n")
+        desktop_file_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
 
     else:
 
@@ -220,7 +199,7 @@ Categories=Utility;
 Icon={app_name}
 {'NoDisplay=true' if hide_from_menu else ''}
 """
-        desktop_file_path.write_text(desktop_content.strip() + "\n")
+        desktop_file_path.write_text(desktop_content.strip() + "\n", encoding="utf-8")
 
 
 def prepare_window_manager_launcher(app_dir):
@@ -280,7 +259,7 @@ def patch_binary_rpath(binary_path, config):
 
     # -- Fetch settings from YAML.
 
-    setlibpath = get_apprunconf_value(config, "setlibpath", "/usr/lib")
+    setlibpath = get_apprunconf_value(config, "setlibpath", default="/usr/lib", expected_type=str)
 
     # -- Determine multiarch triplet dynamically.
 
@@ -294,8 +273,7 @@ def patch_binary_rpath(binary_path, config):
     multiarch_triplet = arch_map.get(arch)
 
     if not multiarch_triplet:
-        print(f"❌ Error: Unsupported architecture detected: {arch}. Aborting.")
-        return
+        raise BuildError(f"Unsupported architecture detected: {arch}. Aborting.")
 
     # -- Patch the RPATH of the executable; the paths are relative to the path of the binary.
 
@@ -350,7 +328,7 @@ def patch_binary_rpath(binary_path, config):
         )
         print(f"🩹 Patched RPATH for: {binary_path}")
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error: Failed to patch RPATH for {binary_path}: {e}")
+        raise BuildError(f"Failed to patch RPATH for {binary_path}: {e}") from e
 
 
 def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, config, quiet=True):
@@ -397,8 +375,8 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
             appimages = list(output_dir.glob("*.AppImage"))
 
             if not appimages:
-                print(f"❌ Error: No AppImage found after Go appimagetool build.\n")
-                sys.exit(1)
+                cleanup_cache(app_name)
+                raise BuildError("No AppImage found after Go appimagetool build.")
 
             built_appimage = appimages[0]
             built_appimage.rename(output_file)
@@ -408,8 +386,8 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
             output_file.chmod(0o755)
 
         if not output_file.exists():
-            print(f"❌ Error: Expected AppImage not found: {output_file}\n")
-            sys.exit(1)
+            cleanup_cache(app_name)
+            raise BuildError(f"Expected AppImage not found: {output_file}")
 
         if not quiet:
             print(f"✅ AppImage built successfully: {output_file}")
@@ -417,9 +395,8 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Error: AppImage build failed! {e}")
         cleanup_cache(app_name)
-        exit(1)
+        raise BuildError(f"AppImage build failed! {e}") from e
 
 
 def prepare_appimage(config, install_mode=False, quiet=True):
@@ -430,18 +407,16 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     binary_path = config["buildinfo"].get("binarypath")
 
     if not binary_path:
-        print(f"❌ Error: No binary path specified for {app_name}. Aborting.")
         cleanup_cache(app_name)
-        sys.exit(1)
+        raise BuildError(f"No binary path specified for {app_name}. Aborting.")
 
     # -- Ensure AppDir is properly set up before running any commands.
 
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
     if not extracted_binary_path.exists():
-        print(f"❌ Error: Binary {extracted_binary_path} not found!. Aborting.")
         cleanup_cache(app_name)
-        sys.exit(1)
+        raise BuildError(f"Binary {extracted_binary_path} not found!. Aborting.")
 
     # -- Run prebuild commands inside the AppDir.
 
@@ -466,11 +441,13 @@ def prepare_appimage(config, install_mode=False, quiet=True):
                 print(f"    🤖 Command executed: {cmd_resolved}")
                 print()
             except subprocess.CalledProcessError as e:
-                print(f"❌ Error: Failed to execute prebuild command: '{cmd_resolved}'.\n")
-                print(f"    📜 Output: {e.stderr.decode(errors='replace')}")
-                print(f"❌ Error: AppImage build failed!")
                 cleanup_cache(app_name)
-                sys.exit(1)
+                err_output = e.stderr.decode(errors='replace')
+                raise BuildError(
+                    f"Failed to execute prebuild command: '{cmd_resolved}'.\n"
+                    f"Output: {err_output}"
+                ) from e
+
 
     # -- Select AppImage runtime tool based on runtime.
 
@@ -483,9 +460,8 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     elif runtime == "uruntime":
         appimagetool_binary = get_uruntime(quiet=quiet)
     else:
-        print(f"❌ Error: Unknown runtime '{runtime}' specified in buildinfo.")
         cleanup_cache(app_name)
-        sys.exit(1)
+        raise BuildError(f"Unknown runtime '{runtime}' specified in buildinfo.")
 
     # -- Move binary to correct location BEFORE generating AppRun.
 
@@ -506,23 +482,20 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     integration = config.get("integration", {})
     integration_type = integration.get("type", "gui")
 
-    hide_from_menu = (integration_type == "cli")
-    is_window_manager = (integration_type == "wm")
+    hide_from_menu = integration_type == "cli"
 
     if integration_type == "wm":
         wm_launcher = prepare_window_manager_launcher(app_dir)
         if not wm_launcher:
-            print("❌ Error: No session launcher (.desktop) found in Wayland/X11 session directories.")
             cleanup_cache(app_name)
-            sys.exit(1)
+            raise BuildError("No session launcher (.desktop) found in Wayland/X11 session directories.")
     else:
         fix_desktop_entry(app_name, app_dir, new_binary_path, hide_from_menu=hide_from_menu)
     try:
         copy_system_icon(app_name, app_dir, config, config["buildinfo"].get("iconpath", None))
-    except FileNotFoundError as e:
-        print(f"{e}")
+    except (FileNotFoundError, BuildError) as e:
         cleanup_cache(app_name)
-        sys.exit(1)
+        raise BuildError(str(e)) from e
 
     # -- Determine the final AppImage location.
 

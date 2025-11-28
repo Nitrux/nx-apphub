@@ -1,43 +1,26 @@
 #!/usr/bin/env python3
-
-#############################################################################################################################################################################
-#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
-#                                                                                                                                                                           #
-#   Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
-#                                                                                                                                                                           #
-#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
-#                                                                                                                                                                           #
-#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
-#                                                                                                                                                                           #
-#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
-#       in the documentation and/or other materials provided with the distribution.                                                                                         #
-#                                                                                                                                                                           #
-#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
-#       without specific prior written permission.                                                                                                                          #
-#                                                                                                                                                                           #
-#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
-#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
-#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
-#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
-#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
-#############################################################################################################################################################################
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>
 
 import os
-import sys
 import subprocess
 import gzip
 import argparse
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
+import re
+
 import requests
 import yaml
-import re
 from elftools.elf.elffile import ELFFile
+
+from .exceptions import BuildError
+
 # <---
 # --->
 def detect_appdir(path):
-    """Normalize path and auto-detect if it's a squashfs-root."""
+    """Normalize a user-provided path and detect whether it points to a squashfs-root directory."""
     path = Path(path).expanduser().resolve()
     if path.name == "squashfs-root":
         return path
@@ -47,7 +30,7 @@ def detect_appdir(path):
 
 
 def is_elf(path):
-    """Return True if the file is an ELF binary."""
+    """Return True if the given file starts with an ELF header."""
     try:
         with open(path, "rb") as f:
             return f.read(4) == b"\x7fELF"
@@ -56,7 +39,8 @@ def is_elf(path):
 
 
 def library_exists_in_appdir(libname, appdir):
-    for root, dirs, files in os.walk(appdir):
+    """Check whether a library file with the given name exists somewhere inside the AppDir."""
+    for _, _, files in os.walk(appdir):
         for file in files:
             if file == libname or file.startswith(libname + "."):
                 return True
@@ -64,15 +48,17 @@ def library_exists_in_appdir(libname, appdir):
 
 
 def find_missing_libs(appdir):
-    """Scan the AppDir for executables or shared objects with missing libraries."""
+    """Scan ELF files in the AppDir and return a mapping of missing libraries to the binaries requiring them."""
     missing = {}
-    for root, dirs, files in os.walk(appdir):
+    for root, _, files in os.walk(appdir):
         for file in files:
             full_path = Path(root) / file
             if not is_elf(full_path):
                 continue
             try:
-                result = subprocess.check_output(['ldd', str(full_path)], stderr=subprocess.DEVNULL, text=True)
+                result = subprocess.check_output(['ldd', str(full_path)],
+                                                 stderr=subprocess.DEVNULL,
+                                                 text=True)
             except subprocess.CalledProcessError:
                 continue
             for line in result.splitlines():
@@ -85,14 +71,12 @@ def find_missing_libs(appdir):
 
 
 def is_valid_appdir(appdir_path):
-    """Validate that the AppDir has a minimal structure."""
+    """Return True if the given path appears to be a minimally valid AppDir."""
     if not appdir_path.is_dir():
         return False
 
     app_run = appdir_path / "AppRun"
     usr_dir = appdir_path / "usr"
-
-    # -- Minimal expectations: AppRun and usr/ must exist.
 
     if not app_run.is_file():
         return False
@@ -104,6 +88,10 @@ def is_valid_appdir(appdir_path):
 
 
 def suggest_providing_packages(missing_libs, repos, quiet=True):
+    """
+    Suggest Debian/Ubuntu packages that may provide the given missing libraries
+    by scanning Contents-*.gz files from the appropriate repositories.
+    """
     suggestions = {}
     seen_urls = set()
 
@@ -170,7 +158,9 @@ def suggest_providing_packages(missing_libs, repos, quiet=True):
                     if not quiet:
                         print(f"📑 Parsing: {url}\n")
 
-                    with gzip.open(BytesIO(response.content), 'rt', encoding='utf-8', errors='ignore') as f:
+                    with gzip.open(BytesIO(response.content), 'rt',
+                                   encoding='utf-8',
+                                   errors='ignore') as f:
                         for line in f:
                             line = line.strip()
                             if not line:
@@ -195,6 +185,7 @@ def suggest_providing_packages(missing_libs, repos, quiet=True):
 
 
 def _read_dynamic_elf(path):
+    """Extract DT_NEEDED, RPATH, and RUNPATH entries from an ELF binary."""
     with open(path, "rb") as f:
         elf = ELFFile(f)
         dyn = elf.get_section_by_name(".dynamic")
@@ -217,6 +208,7 @@ def _read_dynamic_elf(path):
 
 
 def _expand_origin_paths(raw, origin):
+    """Expand $ORIGIN variables inside RPATH/RUNPATH entries."""
     if not raw:
         return []
     out = []
@@ -226,6 +218,7 @@ def _expand_origin_paths(raw, origin):
 
 
 def _elf_search_paths(binary_path, appdir_path, rpath, runpath, extra=None):
+    """Construct a list of library search paths for an ELF binary."""
     origin = Path(binary_path).parent.resolve()
     paths = []
     env = os.environ.get("LD_LIBRARY_PATH")
@@ -254,6 +247,7 @@ def _elf_search_paths(binary_path, appdir_path, rpath, runpath, extra=None):
 
 
 def verify_elf_dependencies(binary, appdir):
+    """Return detailed dependency resolution information for one ELF binary."""
     b = Path(binary).resolve()
     needed, rpath, runpath = _read_dynamic_elf(b)
     cpaths = _elf_search_paths(b, Path(appdir).resolve(), rpath, runpath)
@@ -270,12 +264,21 @@ def verify_elf_dependencies(binary, appdir):
             resolved[soname] = hit
         else:
             missing.append(soname)
-    return {"binary": str(b), "needed": needed, "rpath": rpath, "runpath": runpath, "search_paths": cpaths, "resolved": resolved, "missing": missing}
+    return {
+        "binary": str(b),
+        "needed": needed,
+        "rpath": rpath,
+        "runpath": runpath,
+        "search_paths": cpaths,
+        "resolved": resolved,
+        "missing": missing
+    }
 
 
 def run_elf_checks(appdir):
+    """Perform ELF dependency checks on all ELF binaries inside the AppDir."""
     results = []
-    for root, dirs, files in os.walk(appdir):
+    for root, _, files in os.walk(appdir):
         for file in files:
             full_path = Path(root) / file
             if is_elf(full_path):
@@ -287,11 +290,13 @@ def run_elf_checks(appdir):
 
 
 def write_elf_report(appdir, details, report_path=None):
+    """Write a textual report detailing ELF dependency issues."""
     if report_path is None:
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
         report_dir = Path.home() / ".cache/nx-apphub-cli/reports"
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"elf-check-{Path(appdir).name}-{ts}.txt"
+
     with open(report_path, "w", encoding="utf-8") as f:
         for d in details:
             f.write(d["binary"] + "\n")
@@ -308,6 +313,7 @@ def write_elf_report(appdir, details, report_path=None):
 
 
 def run_linter(args=None):
+    """Entry point for running AppDir lint checks and reporting missing libraries."""
     if args is None:
         parser = argparse.ArgumentParser(description="Check missing shared libraries in an AppDir.")
         parser.add_argument("appdir", type=str, help="Path to the AppDir or squashfs-root directory")
@@ -323,8 +329,7 @@ def run_linter(args=None):
         appdir_path = resolved
 
     if not is_valid_appdir(appdir_path):
-        print(f"\n⛔ Invalid or incomplete AppDir: {appdir_path}\n")
-        return
+        raise BuildError(f"Invalid or incomplete AppDir: {appdir_path}")
 
     print()
     print(f"🔍 Scanning AppDir: {appdir_path}\n")

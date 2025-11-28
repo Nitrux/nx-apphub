@@ -1,63 +1,88 @@
 #!/usr/bin/env python3
 
-#############################################################################################################################################################################
-#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
-#                                                                                                                                                                           #
-#   Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
-#                                                                                                                                                                           #
-#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
-#                                                                                                                                                                           #
-#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
-#                                                                                                                                                                           #
-#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
-#       in the documentation and/or other materials provided with the distribution.                                                                                         #
-#                                                                                                                                                                           #
-#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
-#       without specific prior written permission.                                                                                                                          #
-#                                                                                                                                                                           #
-#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
-#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
-#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
-#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
-#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
-#############################################################################################################################################################################
+# SPDX-License-Identifier: BSD-3-Clause
 
-import os
 import platform
 import shutil
 import subprocess
-import sys
 import tarfile
 from pathlib import Path
 
 from .builder import prepare_appimage
 from .config import load_yaml_config
-from .downloader import get_latest_deb, fetch_package_metadata
-from .extractor import extract_deb
-from .utils import cleanup_cache, concurrent_downloads
+from .utils import cleanup_cache, concurrent_downloads, get_architecture
+from .exceptions import ManagerError, NxAppHubError
+
 # <---
 # --->
 # -- Ensure directories exist.
 
-system_arch = platform.machine().lower()
+system_arch = get_architecture()
+
 repo_base_dir = Path.home() / ".local/share/nx-apphub-cli"
 repo_dir = repo_base_dir / "apps"
 backup_dir = repo_base_dir / "backups"
 install_dir = Path.home() / ".local/bin/nx-apphub"
-git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
-debian_mirrors = ["https://ftp.debian.org/debian"]
-ubuntu_mirrors = ["https://archive.ubuntu.com/ubuntu"]
-ubuntu_ports_mirrors = ["https://ports.ubuntu.com/ubuntu-ports"]
-devuan_mirrors = ["http://deb.devuan.org/merged"]
-kde_neon_mirrors = ["https://origin.archive.neon.kde.org/stable"]
-nitrux_mirrors = []  # Should not be used, as Contents file is not provided
-zbkit_mirrors = []  # Should not be used, as Contents file is not provided
-
 
 # -- Create all necessary directories.
 
 for directory in [repo_base_dir, repo_dir, backup_dir, install_dir]:
     directory.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_repo_updated():
+    """Ensure the application repository is cloned and up-to-date."""
+
+    git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
+
+    if repo_dir.exists() and not (repo_dir / ".git").exists():
+        print(f"🚨️ Warning: {repo_dir} is not a valid Git repository. Removing...\n")
+        shutil.rmtree(repo_dir)
+        repo_dir.mkdir(parents=True, exist_ok=True)
+
+    if (repo_dir / ".git").exists():
+        try:
+            status_result = subprocess.run(
+                ["git", "-C", str(repo_dir), "status", "--porcelain"],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            untracked = [
+                line[3:]
+                for line in status_result.stdout.splitlines()
+                if line.startswith("??")
+            ]
+            if untracked:
+                print(f"🚨 Warning: Repository has untracked files: {', '.join(untracked)}")
+                print(" 🔹 Changes might be overwritten or cause conflicts.\n")
+
+            pull_result = subprocess.run(
+                ["git", "-C", str(repo_dir), "pull"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=False
+            )
+            if pull_result.returncode == 0:
+                print("🔄 Applications repository updated.\n")
+            else:
+                print("🚨 Warning: Failed to update repository. Continuing with existing version.\n")
+
+        except Exception as e:
+            print(f"🚨 Warning: Git update check failed ({e}). Continuing...\n")
+
+    if not (repo_dir / ".git").exists():
+        print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
+        try:
+            if any(repo_dir.iterdir()):
+                shutil.rmtree(repo_dir)
+                repo_dir.mkdir(parents=True, exist_ok=True)
+
+            subprocess.run(
+                ["git", "clone", "--depth=1", git_repo_url, str(repo_dir)],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except subprocess.CalledProcessError as e:
+            raise ManagerError("Failed to clone app repository. Try again.") from e
+        except Exception as e:
+            raise ManagerError(f"Unexpected failure during clone: {e}") from e
 
 
 def install(app_names):
@@ -68,59 +93,14 @@ def install(app_names):
 
     print(f"\n[ ⚡ Installing: {', '.join(app_names)} ]\n")
 
-    # -- Ensure the repository is valid.
-
-    if repo_base_dir.exists() and not (repo_base_dir / ".git").exists():
-        print(f"🚨️ Warning: {repo_base_dir} is not a valid Git repository. Removing...\n")
-        shutil.rmtree(repo_base_dir)
-
-    if (repo_base_dir / ".git").exists() and any(repo_dir.glob("*")):
-        try:
-            status_result = subprocess.run(
-                ["git", "-C", str(repo_base_dir), "status", "--porcelain"],
-                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
-            untracked = [
-                line[3:]
-                for line in status_result.stdout.splitlines()
-                if line.startswith("??") and not line[3:].startswith("firejail.d/")
-            ]
-            if untracked:
-                print(f"🚨 Warning: Repository has untracked files: {', '.join(untracked)}")
-                print(" 🔹 Ignoring known safe changes (e.g., firejail.d/) if present.\n")
-
-            pull_result = subprocess.run(
-                ["git", "-C", str(repo_base_dir), "pull"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
-            print("🔄 Applications repository updated.\n" if pull_result.returncode == 0
-                  else "🚨 Warning: Failed to update repository. Continuing with the existing version.\n")
-
-        except Exception as e:
-            print(f"🚨 Warning: Git update check failed ({e}). Continuing...\n")
-
-    if not any(repo_dir.glob("*")):
-        print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
-        try:
-            subprocess.run(
-                ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
-        except subprocess.CalledProcessError:
-            print("❌ Error: Failed to clone app repository. Try again.\n")
-            sys.exit(1)
-        except Exception as e:
-            print(f"❌ Error: Unexpected failure during clone: {e}\n")
-            sys.exit(1)
-
-    # -- Phase 1: Evaluate each app and classify as installed or to-be-built.
+    ensure_repo_updated()
 
     to_build = []
-
     printed_installed_msg = False
 
     for app_name in app_names:
-        app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
+        app_yaml_path = repo_dir / "apps" / system_arch / app_name / "app.yml"
+        
         if not app_yaml_path.exists():
             print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
             continue
@@ -134,7 +114,9 @@ def install(app_names):
 
         installed_appbox = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
         if installed_appbox:
-            installed_version = installed_appbox.stem.split("-")[1]
+            parts = installed_appbox.stem.split("-")
+            installed_version = "-".join(parts[1:-1]) if len(parts) > 2 else "unknown"
+
             print(f"    ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.")
             printed_installed_msg = True
             continue
@@ -143,8 +125,6 @@ def install(app_names):
 
     if printed_installed_msg:
         print()
-
-    # -- Phase 2: Download and build new apps.
 
     for index, (app_name, config) in enumerate(to_build):
         repos_config = config["buildinfo"].get("distrorepo", {})
@@ -166,13 +146,13 @@ def install(app_names):
 
         built_appbox = install_dir / f"{app_name}-{config['buildinfo'].get('version')}-{system_arch}.AppBox"
         if not built_appbox.exists():
-            print(f"❌ Error: Failed to find the built {built_appbox} file. Skipping installation.\n")
             cleanup_cache(app_name)
-            return
+            raise ManagerError(f"Failed to find the built {built_appbox} file.")
 
         print(f"✅ Installation successful!\n\n    📦 Available at: {built_appbox}")
+        print()
 
-        if to_build:
+        if index < len(to_build) - 1:
             print()
 
     print("🎉 All requested applications have been processed!\n")
@@ -230,31 +210,26 @@ def search(app_names):
 
     print(f"\n[ 🔍 Searching for: {', '.join(app_names)} ]\n")
 
-    # -- Ensure the repository is cloned or updated before searching.
+    ensure_repo_updated()
 
-    if not (repo_base_dir / ".git").exists():
-        print("📥 Cloning application repository...")
-        shutil.rmtree(repo_base_dir, ignore_errors=True)
-        subprocess.run(
-            ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-    else:
-        print("🔄 Updating repository...")
-        subprocess.run(
-            ["git", "-C", str(repo_base_dir), "pull"],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-    
     found_apps = []
     missing_apps = []
 
     for app_name in app_names:
-        app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
+        search_path = repo_dir / "apps" / system_arch
+
+        if not search_path.exists():
+            missing_apps.append(f"    ❌ {app_name} (Architecture directory '{system_arch}' missing in repository)")
+            continue
+
         matched_paths = [
-            p for p in (repo_dir / system_arch).glob("*")
+            p for p in search_path.glob("*")
             if app_name in p.name
         ]
+
+        if not matched_paths:
+            missing_apps.append(f"    ❌ {app_name} (Unknown application)")
+            continue
 
         for p in matched_paths:
             app_yaml = p / "app.yml"
@@ -268,7 +243,7 @@ def search(app_names):
     if found_apps:
         print("\n🟢 Found Applications:\n")
         print("\n".join(found_apps), "\n")
-    
+
     if missing_apps:
         print("\n🔴 Not Found:\n")
         print("\n".join(missing_apps), "\n")
@@ -277,37 +252,17 @@ def search(app_names):
 def update(app_names):
     """Update one or more AppBoxes only if a newer version is available."""
 
-    # -- Ensure app_names is a list.
-
     if isinstance(app_names, str):
         app_names = [app_names]
-    
-    # -- Remove duplicates while preserving order.
 
     app_names = list(dict.fromkeys(app_names))
 
     print(f"\n[ 📤 Updating: {', '.join(app_names)} ]\n")
 
-    # -- Ensure the repository is up to date.
-
-    if not (repo_base_dir / ".git").exists():
-        print("📥 Cloning application repository...")
-        shutil.rmtree(repo_base_dir, ignore_errors=True)
-        subprocess.run(
-            ["git", "clone", "--depth=1", git_repo_url, str(repo_base_dir)],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-    else:
-        print("    🔄 Fetching latest repository changes...")
-        subprocess.run(
-            ["git", "-C", str(repo_base_dir), "pull"],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+    ensure_repo_updated()
 
     for app_name in app_names:
         print(f"\n[ 🔄 Checking updates for: {app_name} ]\n")
-
-        # -- Find installed AppBox.
 
         installed_app = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
 
@@ -315,24 +270,15 @@ def update(app_names):
             print(f"    ❌ Error: {app_name} is not installed. Cannot update.\n")
             continue
 
-        # -- Extract version from installed file.
-
         installed_parts = installed_app.stem.split("-")
-        if len(installed_parts) < 2:
-            print(f"    ❌ Error: Could not determine installed version for {app_name}.\n")
-            continue
+        installed_version = "-".join(installed_parts[1:-1]) if len(installed_parts) > 2 else "unknown"
 
-        installed_version = "-".join(installed_parts[1:-1])
-
-        # -- Validate YAML existence.
-
-        app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
+        app_yaml_path = repo_dir / "apps" / system_arch / app_name / "app.yml"
+        
         if not app_yaml_path.exists():
             print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
             print()
             continue
-
-        # -- Load YAML and check latest version.
 
         config = load_yaml_config(app_yaml_path)
         latest_version = config["buildinfo"].get("version", "unknown")
@@ -347,14 +293,10 @@ def update(app_names):
 
         print(f"    🔄 New version available: {latest_version} (Installed: {installed_version})\n")
 
-        # -- Remove executable permission before backup.
-
         try:
             installed_app.chmod(0o644)
         except OSError as e:
             print(f"🚨️ Warning: Failed to modify permissions of {installed_app}. Reason: {e}")
-
-        # -- Create backup safely.
 
         backup_name = backup_dir / f"{app_name}-{installed_version}-{system_arch}.tar"
         try:
@@ -365,27 +307,17 @@ def update(app_names):
             print(f"❌ Error creating backup for {app_name}: {e}")
             continue
 
-        # -- Delete the old AppImage to force install to proceed with creating a new one.
-
         try:
             installed_app.unlink()
         except OSError as e:
             print(f"❌ Error deleting {installed_app}: {e}")
             continue
 
-        # -- Attempt installation of new version.
-
-        install([app_name])
-
-        # -- Check if new AppBox exists.
-
-        new_appbox = install_dir / f"{app_name}-{latest_version}-{system_arch}.AppBox"
-        if new_appbox.exists():
-            print(f"✅ {app_name} successfully updated to version {latest_version}!\n")
-        else:
-            print(f"❌ Update failed: No new AppImage found. Restoring backup...")
-
-            # -- Restore backup if update fails.
+        try:
+            install([app_name])
+        except NxAppHubError as e:
+            print(f"❌ Update failed: {e}")
+            print("    Restoring backup...")
 
             try:
                 with tarfile.open(backup_name, "r") as tar:
@@ -396,14 +328,28 @@ def update(app_names):
                     print(f"♻️ Restored {app_name} to version {installed_version}\n")
                 else:
                     print(f"❌ Failed to restore {app_name}.")
+            except Exception as restore_err:
+                print(f"❌ Critical error: Could not restore backup for {app_name}. Reason: {restore_err}")
+            continue
+
+        new_appbox = install_dir / f"{app_name}-{latest_version}-{system_arch}.AppBox"
+        if new_appbox.exists():
+            print(f"✅ {app_name} successfully updated to version {latest_version}!\n")
+        else:
+            print(f"❌ Update failed: No new AppImage found. Restoring backup...")
+            try:
+                with tarfile.open(backup_name, "r") as tar:
+                    tar.extractall(path=install_dir)
+                restored_appbox = install_dir / f"{app_name}-{installed_version}-{system_arch}.AppBox"
+                if restored_appbox.exists():
+                    restored_appbox.chmod(0o755)
+                    print(f"♻️ Restored {app_name} to version {installed_version}\n")
             except Exception as e:
                 print(f"❌ Critical error: Could not restore backup for {app_name}. Reason: {e}")
 
 
 def downgrade(app_names):
     """Restore specific backups of multiple AppBoxes."""
-
-    # -- Ensure app_names is a list.
 
     if isinstance(app_names, str):
         app_names = [app_names]
@@ -413,21 +359,15 @@ def downgrade(app_names):
     for app_name in app_names:
         print(f"\n🔽 Processing downgrade for: {app_name}...\n")
 
-        # -- Find available backups.
-
         backups = sorted(backup_dir.glob(f"{app_name}-*-{system_arch}.tar"), reverse=True)
 
         if not backups:
             print(f"    ❌ No backups found for {app_name}.\n")
             continue
 
-        # -- Display available backups.
-
         print("📦 Available backups:\n")
         for i, backup in enumerate(backups, 1):
             print(f"    {i}. {backup.name}")
-
-        # -- Select a backup.
 
         while True:
             choice = input(f"\n🔢 Enter the number of the backup to restore for {app_name} (default = latest): ").strip()
@@ -444,13 +384,9 @@ def downgrade(app_names):
         print(f"\n🔄 Restoring backup: {selected_backup.name}...\n")
 
         try:
-            # -- Extract the backup.
-
             with tarfile.open(selected_backup, "r") as tar:
                 extracted_files = tar.getnames()
                 tar.extractall(path=install_dir)
-
-            # -- Locate the restored AppBox based on extracted filenames.
 
             restored_appbox = None
             for file in extracted_files:
@@ -463,12 +399,8 @@ def downgrade(app_names):
                 print(f"❌ Error: Restoration failed! No valid AppBox found in {install_dir}.\n")
                 continue
 
-            # -- Restore executable permissions.
-
             restored_appbox.chmod(0o755)
             print(f"✅ Successfully restored {app_name} to {restored_appbox.name}\n")
-
-            # -- Find and remove the newer version.
 
             for newer_version in install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"):
                 if newer_version != restored_appbox:
@@ -512,23 +444,6 @@ def show():
 
     print(f"\n📁 Total: {len(installed_apps)} installed in {install_dir}\n")
     print(f"📦 Size: {format_size(total_size)}\n")
-
-
-def get_search_results(app_names):
-    """Return structured search results for use in GUI."""
-    results = []
-
-    for app_name in app_names:
-        app_yaml_path = repo_dir / system_arch / app_name / "app.yml"
-        if app_yaml_path.exists():
-            config = load_yaml_config(app_yaml_path)
-            results.append({
-                "name": app_name,
-                "version": config["buildinfo"].get("version", "unknown"),
-                "arch": system_arch
-            })
-
-    return results
 
 
 # -- Export functions.

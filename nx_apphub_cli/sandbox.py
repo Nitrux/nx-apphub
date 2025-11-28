@@ -1,29 +1,10 @@
 #!/usr/bin/env python3
-
-#############################################################################################################################################################################
-#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
-#                                                                                                                                                                           #
-#   Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
-#                                                                                                                                                                           #
-#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
-#                                                                                                                                                                           #
-#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
-#                                                                                                                                                                           #
-#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
-#       in the documentation and/or other materials provided with the distribution.                                                                                         #
-#                                                                                                                                                                           #
-#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
-#       without specific prior written permission.                                                                                                                          #
-#                                                                                                                                                                           #
-#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
-#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
-#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
-#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
-#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
-#############################################################################################################################################################################
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>
 
 import os
 from pathlib import Path
+
 # <---
 # --->
 # -- Bubblewrap flag mappings.
@@ -34,7 +15,7 @@ bwrap_boolean_flags = {
     "proc": ["--proc", "/proc"],
     "tmpfs": ["--tmpfs", "/tmp"],
     "mqueue": ["--mqueue", "/dev/mqueue"],
-    "ro-home": ["--ro-bind", os.getenv("HOME"), os.getenv("HOME")],
+    "ro-home": ["--ro-bind", "$HOME", "$HOME"],
     "no-net": ["--unshare-net"],
     "no-ipc": ["--unshare-ipc"],
     "no-pid": ["--unshare-pid"],
@@ -48,14 +29,14 @@ bwrap_boolean_flags = {
 }
 
 bwrap_list_flags = {
-    "bwrap_env": lambda key, val: [],
-    "bwrap_unset-env": lambda k, v: ["--unsetenv", v],
-    "cap-drop": lambda k, v: ["--cap-drop", v],
-    "bind": lambda k, v: ["--bind"] + v.split(":", 1),
-    "ro-bind": lambda k, v: ["--ro-bind"] + v.split(":", 1),
-    "bind-try": lambda k, v: ["--bind-try"] + v.split(":", 1),
-    "ro-bind-try": lambda k, v: ["--ro-bind-try"] + v.split(":", 1),
-    "remount-ro": lambda k, v: ["--remount-ro", v]
+    "bwrap_env": lambda _k, _v: [],
+    "bwrap_unset-env": lambda _k, _v: [],
+    "cap-drop": lambda _k, v: ["--cap-drop", v],
+    "bind": lambda _k, v: ["--bind"] + v.split(":", 1),
+    "ro-bind": lambda _k, v: ["--ro-bind"] + v.split(":", 1),
+    "bind-try": lambda _k, v: ["--bind-try"] + v.split(":", 1),
+    "ro-bind-try": lambda _k, v: ["--ro-bind-try"] + v.split(":", 1),
+    "remount-ro": lambda _k, v: ["--remount-ro", v]
 }
 
 bwrap_key_value_flags = {
@@ -68,6 +49,7 @@ bwrap_key_value_flags = {
 
 
 def get_known_apparmor_profiles():
+    """Return a set of AppArmor profiles found in /etc/apparmor.d/."""
     profile_dir = "/etc/apparmor.d/"
     try:
         return {f for f in os.listdir(profile_dir) if not f.startswith(".")}
@@ -77,7 +59,7 @@ def get_known_apparmor_profiles():
 
 def generate_firejail_profile(profile_name: str):
     """Generate a minimal Firejail profile and save it."""
-    
+
     profile_dir = Path.home() / ".local/share/nx-apphub-cli/firejail.d"
     profile_dir.mkdir(parents=True, exist_ok=True)
     profile_path = profile_dir / f"{profile_name}.profile"
@@ -102,7 +84,7 @@ caps
 
     # -- Write the profile to the file.
 
-    with open(profile_path, "w") as f:
+    with open(profile_path, "w", encoding="utf-8") as f:
         f.write(profile_content)
 
     print(f"🔒 Firejail profile saved to: {profile_path}\n")
@@ -110,54 +92,68 @@ caps
 
 
 def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
-    """Return the appropriate sandbox execution line."""
     sandbox_type = sandbox.get("type", "none")
-
-    # -- Handle Firejail use.
 
     if sandbox_type == "firejail":
         profile_name = f"{sandbox.get('name', 'default-appbox')}-profile"
-        firejail_profile = str(Path.home() / f".local/share/nx-apphub-cli/firejail.d/{profile_name}")
+        firejail_profile_path = (
+            Path.home()
+            / ".local/share/nx-apphub-cli/firejail.d"
+            / f"{profile_name}.profile"
+        )
 
-        if not os.path.exists(firejail_profile):
-            firejail_profile = generate_firejail_profile(profile_name)
+        if not firejail_profile_path.exists():
+            generate_firejail_profile(profile_name)
 
         apparmor_profile = sandbox.get("aa_profile", "none")
         cmd = f'"$APPDIR{exec_cmd}" "$@"'
-        if apparmor_profile != "none":
-            return f'exec /usr/bin/firejail --profile={firejail_profile} --apparmor="{apparmor_profile}" {cmd}'
-        return f'exec /usr/bin/firejail --profile={firejail_profile} {cmd}'
+        firejail_profile_str = str(firejail_profile_path)
 
-    # -- Handle Bubblewrap use.
+        if apparmor_profile != "none":
+            return (
+                f'exec /usr/bin/firejail --profile="{firejail_profile_str}" '
+                f'--apparmor="{apparmor_profile}" {cmd}'
+            )
+        return f'exec /usr/bin/firejail --profile="{firejail_profile_str}" {cmd}'
 
     if sandbox_type == "bwrap":
-        bwrap_args = ["/usr/bin/bwrap"]
+        argv = ["/usr/bin/bwrap"]
 
         for key, flag in bwrap_boolean_flags.items():
             if sandbox.get(key):
-                bwrap_args += flag
+                argv.extend(flag)
 
         for key, transform in bwrap_list_flags.items():
             for item in sandbox.get(key, []):
                 if isinstance(item, str):
                     item = item.replace("~", "$HOME")
-                bwrap_args += [arg if arg.startswith("--") else f'"{arg}"' for arg in transform(key, item)]
+                argv.extend(transform(key, item))
 
         for item in sandbox.get("bwrap_env", []):
             if isinstance(item, dict):
                 for k, v in item.items():
-                    bwrap_args += ["--setenv", k, f'"{v}"']
+                    argv.extend(["--setenv", k, v])
 
         for item in sandbox.get("bwrap_unset-env", []):
-            bwrap_args += ["--unsetenv", item]
+            argv.extend(["--unsetenv", item])
 
         for key, flag in bwrap_key_value_flags.items():
             if key in sandbox:
-                bwrap_args += [flag, f'"{sandbox[key]}"']
+                argv.extend([flag, str(sandbox[key])])
 
-        bwrap_args.append(f'"$APPDIR{exec_cmd}"')
-        bwrap_args.append('"$@"')
+        argv.append(f"$APPDIR{exec_cmd}")
+        argv.append("$@")
 
-        return "exec " + " ".join(bwrap_args)
+        rendered = []
+        for arg in argv:
+            if arg == "/usr/bin/bwrap" or arg.startswith("--"):
+                rendered.append(arg)
+            elif arg == "$@":
+                rendered.append('"$@"')
+            else:
+                escaped = arg.replace('"', '\\"')
+                rendered.append(f'"{escaped}"')
+
+        return "exec " + " ".join(rendered)
 
     return f'exec "$APPDIR{exec_cmd}" "$@"'

@@ -1,42 +1,22 @@
 #!/usr/bin/env python3
-
-#############################################################################################################################################################################
-#   The license used for this file and its contents is: BSD-3-Clause                                                                                                        #
-#                                                                                                                                                                           #
-#   Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>                                                                                                                   #
-#                                                                                                                                                                           #
-#   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:                          #
-#                                                                                                                                                                           #
-#    1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.                                        #
-#                                                                                                                                                                           #
-#    2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer                                      #
-#       in the documentation and/or other materials provided with the distribution.                                                                                         #
-#                                                                                                                                                                           #
-#    3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software                    #
-#       without specific prior written permission.                                                                                                                          #
-#                                                                                                                                                                           #
-#    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,                      #
-#    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS                  #
-#    BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE                 #
-#    GOODS OR SERVICES; LOSS OF USE, DATA,   OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,                      #
-#    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   #
-#############################################################################################################################################################################
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>
 
 import os
 import platform
-import random
 import re
 import shutil
-import sys
-import time
+import signal
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
-from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock, Event
 
 import requests
 from tqdm import tqdm
-# <---
-# --->
+
+from .exceptions import ConfigError, DownloadError
+
+
 # -- Define base directories.
 
 cache_dir = Path.home() / ".cache/nx-apphub-cli"
@@ -103,10 +83,8 @@ def get_appimagetool(quiet=True):
                 print(f"✅  appimagetool downloaded and saved to {appimagetool_path}")
 
         except requests.RequestException as e:
-            print(f"❌ Error downloading appimagetool: {e}")
-            print()
-            exit(1)
-        
+            raise DownloadError(f"Error downloading appimagetool: {e}") from e
+
     return appimagetool_path
 
 
@@ -141,14 +119,10 @@ def get_go_appimagetool(quiet=True):
                     print(f"✅  go-appimagetool downloaded and saved to {go_appimagetool_path}")
 
             else:
-                print(f"❌ Error: Could not find a matching go-appimagetool build for architecture: {arch}")
-                print()
-                exit(1)
+                raise DownloadError(f"Could not find a matching go-appimagetool build for architecture: {arch}")
 
         except requests.RequestException as e:
-            print(f"❌ Error downloading Go-based appimagetool: {e}")
-            print()
-            exit(1)
+            raise DownloadError(f"Error downloading Go-based appimagetool: {e}") from e
 
     return go_appimagetool_path
 
@@ -180,45 +154,9 @@ def get_uruntime(quiet=True):
                 print(f"✅  uruntime downloaded and saved to {uruntime_path}")
 
         except requests.RequestException as e:
-            print(f"❌ Error downloading uruntime: {e}")
-            print()
-            sys.exit(1)
+            raise DownloadError(f"Error downloading uruntime: {e}") from e
 
     return uruntime_path
-
-
-def infer_lint_metadata_from_yaml(yaml_path):
-    from pathlib import Path
-    import yaml
-
-    path = Path(yaml_path).expanduser()
-    if not path.exists():
-        raise FileNotFoundError(f"YAML file not found: {path}")
-
-    with open(path, "r") as f:
-        config = yaml.safe_load(f)
-
-    result = {
-        "distro": None,
-        "release": None,
-        "components": [],
-    }
-
-    distros = config.get("buildinfo", {}).get("distrorepo")
-
-    if isinstance(distros, list):
-        if distros:
-            result["distro"] = distros[0].get("distro")
-            result["release"] = distros[0].get("release")
-            result["components"] = distros[0].get("components", ["main"])
-    elif isinstance(distros, dict):
-        base = distros.get("base", [])
-        if base:
-            result["distro"] = base[0].get("distro")
-            result["release"] = base[0].get("release")
-            result["components"] = base[0].get("components", ["main"])
-
-    return result
 
 
 def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
@@ -239,8 +177,7 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
             if repo_id:
                 repo_list = [ppa_repos.get(repo_id)]
                 if repo_list[0] is None:
-                    print(f"❌ Error: Unknown repo ID: '{repo_id}' for package: '{pkg_name}'.")
-                    return
+                    raise ConfigError(f"Unknown repo ID: '{repo_id}' for package: '{pkg_name}'.")
             else:
                 repo_list = base_repos
         else:
@@ -263,8 +200,10 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
         ) as progress:
             with ThreadPoolExecutor(max_workers=3) as executor:
                 log_lock = Lock()
+                stop_event = Event()
+
                 future_to_pkg = {
-                    executor.submit(get_latest_deb, pkg_name, repo_list, cache_name, log_lock): pkg_name
+                    executor.submit(get_latest_deb, pkg_name, repo_list, cache_name, log_lock, stop_event=stop_event): pkg_name
                     for pkg_name, repo_list in download_tasks
                 }
 
@@ -274,35 +213,34 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
                 for future in as_completed(future_to_pkg):
                     try:
                         deb_path = future.result()
-                        
+
                         if has_failed:
                             continue
 
                         if deb_path:
                             extract_deb(deb_path, cache_name)
-                        
+
                         progress.update(1)
 
                     except Exception as e:
                         if not has_failed:
                             has_failed = True
                             first_exception = e
+                            stop_event.set()
                             executor.shutdown(wait=False, cancel_futures=True)
-                
+
+                            os.kill(os.getpid(), signal.SIGINT)
+
                 if has_failed:
                     progress.close()
-                    with log_lock:
-                        tqdm.write(f"\n❌ Error: {first_exception}")
-                    
-                    print(f"\n❌ Error: AppImage build failed!.")
                     cleanup_cache(cache_name)
-                    sys.exit(1)
+                    raise DownloadError(f"AppImage build failed! {first_exception}") from first_exception
 
     except KeyboardInterrupt:
-        tqdm.write("\n🛑 Interrupted by user. Exiting cleanly.\n")
         try:
             executor.shutdown(wait=False, cancel_futures=True)
         except NameError:
             pass
+
         cleanup_cache(cache_name)
-        sys.exit(130)
+        raise
