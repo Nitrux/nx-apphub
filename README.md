@@ -8,14 +8,16 @@
 
 NX AppHub CLI is a lightweight command-line tool for managing and building applications in Nitrux.
 
-> _⚠️ Important: NX AppHub CLI primarily targets Nitrux OS, and using this utility in other distributions may or may not work. Compatibility with other distributions is incidental, not intentional._
+> [!WARNING]
+> NX AppHub CLI primarily targets Nitrux OS, and using this utility in other distributions may or may not work. Compatibility with other distributions is incidental, not intentional._
 
 For more in-depth information about NX AppHub CLI, please see the [Wiki](https://github.com/Nitrux/nx-apphub/wiki).
 
 ## Requirements
 
 - Nitrux 5.0.0 and newer.
-    - _♦ Information: To use `nx-apphub-cli` in previous versions of Nitrux use a container; see our tutorial on [how to use Distrobox](https://nxos.org/tutorial/how-to-use-distrobox-in-nitrux/)._
+> [!NOTE]
+> To use `nx-apphub-cli` in previous versions of Nitrux use a container; see our tutorial on [how to use Distrobox](https://nxos.org/tutorial/how-to-use-distrobox-in-nitrux/)._
 - Python 3.10 and newer.
 
 ### Runtime Requirements
@@ -44,7 +46,8 @@ To install NX AppHub CLI we recommend using `pipx`.
 pipx install git+https://github.com/Nitrux/nx-apphub.git
 ```
 
-> _⚠️ Important: pipx will install `nx-apphub-cli` to `$HOME/.local/bin`, run `pipx ensurepath` to add this directory to `$PATH`._
+> [!WARNING]
+> pipx will install `nx-apphub-cli` to `$HOME/.local/bin`, run `pipx ensurepath` to add this directory to `$PATH`._
 
 
 ## System-wide
