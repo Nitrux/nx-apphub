@@ -211,10 +211,11 @@ def remove(app_names):
                 firejail_profile.unlink()
                 firejail_profiles_deleted.append(firejail_profile.name)
 
-            build_marker = repo_base_dir / ".built" / filename_stem
-            if build_marker.exists():
-                build_marker.unlink()
-                build_markers_deleted.append(filename_stem)
+            build_markers_dir = repo_base_dir / ".built"
+            if build_markers_dir.exists():
+                for marker_file in build_markers_dir.glob(f"{app_name}-*-{system_arch}"):
+                    marker_file.unlink()
+                    build_markers_deleted.append(marker_file.name)
 
         except PermissionError:
             missing_apps.append(f"    ❌ {app_name} (Permission Denied)")
