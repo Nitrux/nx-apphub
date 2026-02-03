@@ -23,7 +23,7 @@ class ExtractionError(NxAppHubError):
 
 
 class BuildError(NxAppHubError):
-    """Raised when building an AppDir or AppImage fails."""
+    """Raised when building an AppDir fails."""
 
 
 class RepoError(NxAppHubError):

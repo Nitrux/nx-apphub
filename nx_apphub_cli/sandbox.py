@@ -92,6 +92,7 @@ caps
 
 
 def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
+    """Add the sanbox options to the AppRun exec block."""
     sandbox_type = sandbox.get("type", "none")
 
     if sandbox_type == "firejail":

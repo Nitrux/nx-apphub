@@ -13,6 +13,7 @@ from .exceptions import BuildError
 from .config import get_apprunconf_value
 from .utils import cleanup_cache, get_appimagetool, get_go_appimagetool, get_uruntime, get_architecture
 from .apprun import generate_apprun
+from .console import print_success, print_error, print_info, print_blank
 
 # <---
 # --->
@@ -23,7 +24,7 @@ local_bin = Path.home() / ".local/bin"
 
 
 def setup_appimage_directories(app_name, binary_path):
-    """Ensure required directories exist for AppImage building."""
+    """Ensure required directories exist for building."""
     package_dir = app_base_dir / app_name
     app_dir = package_dir / "AppDir"
     bin_dir = app_dir / "usr/bin"
@@ -87,7 +88,7 @@ def copy_system_icon(app_name, app_dir, config, icon_path, quiet=True):
             icon_dest = app_dir / f"{icon_name}{icon_path.suffix}"
             shutil.copy(icon_path, icon_dest)
             if not quiet:
-                print(f"✔️ Using provided icon: {icon_dest.name}")
+                print_success(f"Using provided icon: {icon_dest.name}", prefix="✔️")
             return
 
     integration_type = config.get("integration", {}).get("type", "gui")
@@ -104,7 +105,7 @@ def copy_system_icon(app_name, app_dir, config, icon_path, quiet=True):
         icon_dest = app_dir / f"{icon_name}{system_icon.suffix}"
         shutil.copy(system_icon, icon_dest)
         if not quiet:
-            print(f"✔️ Using icon from AppDir: {icon_dest.name}")
+            print_success(f"Using icon from AppDir: {icon_dest.name}", prefix="✔️")
         return
 
     raise BuildError(
@@ -114,7 +115,7 @@ def copy_system_icon(app_name, app_dir, config, icon_path, quiet=True):
 
 
 def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False):
-    """Ensure the AppImage contains a valid .desktop file."""
+    """Ensure the AppDir contains a valid .desktop file."""
 
     desktop_dir = app_dir / "usr/share/applications"
     existing_desktops = list(desktop_dir.glob("*.desktop")) if desktop_dir.exists() else []
@@ -323,17 +324,19 @@ def patch_binary_rpath(binary_path, config):
         rpath_value = ":".join(ordered)
 
         subprocess.run(
-            ["patchelf", "--set-rpath", rpath_value, "--force-rpath", str(binary_path)], 
+            ["patchelf", "--set-rpath", rpath_value, "--force-rpath", str(binary_path)],
             check=True
         )
-        print(f"🩹 Patched RPATH for: {binary_path}")
+        print_success(f"Patched RPATH for: {binary_path}", prefix="🩹")
     except subprocess.CalledProcessError as e:
         raise BuildError(f"Failed to patch RPATH for {binary_path}: {e}") from e
 
 
 def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, config, quiet=True):
+    """Package the AppDir."""
     if not quiet:
-        print(f"\n🛠  Packaging AppDir: {output_file} ...")
+        print_blank()
+        print_info(f"Packaging AppDir: {output_file} ...", prefix="🛠")
 
     try:
         env = os.environ.copy()
@@ -376,7 +379,7 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
 
             if not appimages:
                 cleanup_cache(app_name)
-                raise BuildError("No AppImage found after Go appimagetool build.")
+                raise BuildError("No file found after Go appimagetool build.")
 
             built_appimage = appimages[0]
             built_appimage.rename(output_file)
@@ -387,20 +390,20 @@ def package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime,
 
         if not output_file.exists():
             cleanup_cache(app_name)
-            raise BuildError(f"Expected AppImage not found: {output_file}")
+            raise BuildError(f"Expected file not found: {output_file}")
 
         if not quiet:
-            print(f"✅ AppImage built successfully: {output_file}")
+            print_success(f"Built successfully: {output_file}")
 
         cleanup_cache(app_name)
 
     except subprocess.CalledProcessError as e:
         cleanup_cache(app_name)
-        raise BuildError(f"AppImage build failed! {e}") from e
+        raise BuildError(f"Build failed! {e}") from e
 
 
-def prepare_appimage(config, install_mode=False, quiet=True):
-    """Prepare and build an AppImage with the version in the filename."""
+def prepare_appimage(config, install_mode=False, quiet=True, yaml_dir=None):
+    """Prepare and build with the version in the filename."""
 
     app_name = config["buildinfo"]["name"]
     version = config["buildinfo"].get("version", "unknown")
@@ -414,6 +417,29 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     extracted_binary_path, app_dir = setup_appimage_directories(app_name, binary_path)
 
+    # -- Automatically copy scripts from scripts/ directory if it exists.
+
+    if yaml_dir:
+        scripts_dir = yaml_dir / "scripts"
+        if scripts_dir.exists() and scripts_dir.is_dir():
+            dest_bin_dir = app_dir / "usr" / "bin"
+            dest_bin_dir.mkdir(parents=True, exist_ok=True)
+
+            script_files = [f for f in scripts_dir.iterdir() if f.is_file()]
+            if script_files:
+                if not quiet:
+                    print_info(f"Copying {len(script_files)} script(s) from {scripts_dir.name}/ to AppDir...", prefix="📜")
+
+                for script_file in script_files:
+                    dest_file = dest_bin_dir / script_file.name
+                    shutil.copy(script_file, dest_file)
+                    dest_file.chmod(0o755)
+                    if not quiet:
+                        print_success(f"   {script_file.name} → /usr/bin/{script_file.name}", prefix="✓")
+
+                if not quiet:
+                    print_blank()
+
     if not extracted_binary_path.exists():
         cleanup_cache(app_name)
         raise BuildError(f"Binary {extracted_binary_path} not found!. Aborting.")
@@ -422,7 +448,8 @@ def prepare_appimage(config, install_mode=False, quiet=True):
 
     prebuild_commands = config.get("apprunconf", {}).get("prebuild_commands", [])
     if prebuild_commands:
-        print(f"🔧 Running prebuild commands for {app_name} inside {app_dir}...\n")
+        print_info(f"Running prebuild commands for {app_name} inside {app_dir}...", prefix="🔧")
+        print_blank()
         env = os.environ.copy()
         env["APPDIR"] = str(app_dir)
 
@@ -438,8 +465,8 @@ def prepare_appimage(config, install_mode=False, quiet=True):
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE
                 )
-                print(f"    🤖 Command executed: {cmd_resolved}")
-                print()
+                print_info(f"    Command executed: {cmd_resolved}", prefix="🤖")
+                print_blank()
             except subprocess.CalledProcessError as e:
                 cleanup_cache(app_name)
                 err_output = e.stderr.decode(errors='replace')
@@ -449,7 +476,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
                 ) from e
 
 
-    # -- Select AppImage runtime tool based on runtime.
+    # -- Select runtime tool based on runtime.
 
     runtime = config.get("buildinfo", {}).get("runtime", "classic")
 
@@ -471,12 +498,12 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     if extracted_binary_path != new_binary_path:
         shutil.move(str(extracted_binary_path), str(new_binary_path))
         if not quiet:
-            print(f"📂 Moved binary: {extracted_binary_path} → {new_binary_path}")
+            print_info(f"Moved binary: {extracted_binary_path} → {new_binary_path}", prefix="📂")
 
     # -- Generate metadata & AppRun.
 
-    print(f"🧳 Generating AppRun and metadata for: {app_name}...")
-    print()
+    print_info(f"Generating AppRun and metadata for: {app_name}...", prefix="🧳")
+    print_blank()
     generate_apprun(app_dir, config)
 
     integration = config.get("integration", {})
@@ -497,7 +524,7 @@ def prepare_appimage(config, install_mode=False, quiet=True):
         cleanup_cache(app_name)
         raise BuildError(str(e)) from e
 
-    # -- Determine the final AppImage location.
+    # -- Determine the final file location.
 
     output_dir = Path.home() / ".local/bin/nx-apphub" if install_mode else Path.cwd()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -507,13 +534,14 @@ def prepare_appimage(config, install_mode=False, quiet=True):
     file_ext = "AppBox" if install_mode else "AppImage"
     output_file = output_dir / f"{app_name}-{version}-{platform.machine().lower()}.{file_ext}"
 
-    # -- Patch binary RPATH before building the AppImage.
+    # -- Patch binary RPATH before building.
 
     patch_binary_rpath(str(new_binary_path), config)
 
-    # -- Build the final AppImage.
+    # -- Build.
 
     package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, config, quiet)
 
     if not quiet:
-        print(f"📦 AppImage ready: {output_file}\n")
+        print_info(f"Bundle ready: {output_file}", prefix="📦")
+        print_blank()

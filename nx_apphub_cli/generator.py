@@ -8,8 +8,11 @@ import re
 from io import BytesIO
 
 import requests
+from rich.console import Console
 
 from .exceptions import GeneratorError
+
+console = Console()
 
 # <---
 # --->
@@ -52,14 +55,29 @@ distro_mirrors = {
 
 
 def fetch_repository_metadata(distro, release, arch, components):
+    """Fetch the Debian repository metadata."""
     metadata = ""
     mirrors = distro_mirrors.get(distro)
 
     if mirrors is None:
-        raise GeneratorError(f"Unknown distribution '{distro}'. Supported: {', '.join(distro_mirrors.keys())}")
+        supported = ', '.join(distro_mirrors.keys())
+        raise GeneratorError(f"Unknown distribution '{distro}'. Supported: {supported}")
+
+    console.print(f" Fetching repository metadata for [cyan]{distro}/{release}[/cyan]...")
+    console.print()
+
+    total_tasks = len(mirrors) * len(components)
+    completed = 0
 
     for mirror in mirrors:
         for component in components:
+            completed += 1
+            mirror_host = mirror.split('//')[1].split('/')[0]
+            console.print(
+                f"   [{completed}/{total_tasks}] Checking [yellow]{component}[/yellow] "
+                f"from [dim]{mirror_host}[/dim]..."
+            )
+
             base_url = f"{mirror}/dists/{release}/{component}/binary-{arch}/"
             urls_to_try = [base_url + "Packages.gz", base_url + "Packages.xz"]
 
@@ -83,21 +101,32 @@ def fetch_repository_metadata(distro, release, arch, components):
                     break
 
                 except requests.exceptions.RequestException as e:
-                    print(f"🚧 Could not fetch metadata from the repository.")
-                    print(f"  ↪ URL: {url}")
+                    console.print("🚧 Could not fetch metadata from the repository.")
+                    console.print(f"  ↪ URL: {url}")
 
                     if hasattr(e, 'response') and e.response is not None:
-                        print(f"  ↪ Issue: The server returned a '{e.response.status_code} {e.response.reason}' error.")
+                        status_code = e.response.status_code
+                        reason = e.response.reason
+                        console.print(
+                            f"      ↪ Issue: The server returned a "
+                            f"'{status_code} {reason}' error."
+                        )
                     else:
-                        print(f"  ↪ Issue: {e}")
-                    print()
-                    print("👉 Tip: A '404 Not Found' error usually means the combination of distribution, release, or component is incorrect.")
-                    print()
+                        console.print(f"      ↪ Issue: {e}")
+                    console.print()
+                    console.print(
+                        "👉 Tip: A '404 Not Found' error usually means the "
+                        "combination of distribution, release, or component is incorrect."
+                    )
+                    console.print()
 
+    console.print()
+    console.print(" Metadata fetched successfully.\n")
     return metadata
 
 
 def parse_package_info(package_name, metadata):
+    """Parse the package information from the repository metadata."""
     packages = metadata.split('\n\n')
     for entry in packages:
         if f"Package: {package_name}\n" in entry:
@@ -106,12 +135,14 @@ def parse_package_info(package_name, metadata):
 
 
 def extract_field(entry, field):
+    """Extract a specific field from the package information."""
     pattern = re.compile(rf"^{field}: (.+)$", re.MULTILINE)
     match = pattern.search(entry)
     return match.group(1) if match else None
 
 
 def parse_dependencies(dep_line):
+    """Parse the dependencies from the package information."""
     if not dep_line:
         return []
     deps = []
@@ -123,6 +154,7 @@ def parse_dependencies(dep_line):
 
 
 def parse_fields(entry):
+    """Parse the fields from the package information."""
     fields = {}
     current_key = None
     buffer = []
@@ -145,6 +177,9 @@ def parse_fields(entry):
 
 
 def generate_yaml(package_name, distro, release, arch, components, integration_key="gui", runtime="classic"):
+    """Generate the YAML data for the package."""
+    console.print(f"\n Searching for package: [bold cyan]{package_name}[/bold cyan]\n")
+
     metadata = fetch_repository_metadata(distro, release, arch, components)
 
     if not metadata:
@@ -153,11 +188,14 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
             "Please check your internet connection or the distribution parameters (release, components)."
         )
 
+    console.print(f" Parsing package information for [cyan]{package_name}[/cyan]...\n")
     entry = parse_package_info(package_name, metadata)
     if not entry:
+        components_str = ', '.join(components)
         raise GeneratorError(
             f"Unable to find '{package_name}' in the repository metadata.\n"
-            f"  ↪ (Searched in Distro: {distro}, Release: {release}, Components: {', '.join(components)})\n"
+            f"  ↪ (Searched in Distro: {distro}, Release: {release}, "
+            f"Components: {components_str})\n"
             "\n"
             "👉 Tip: The package might be in a different component. "
             "Try adding them to your command, e.g.: --components main universe"
@@ -206,6 +244,7 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
 
 
 def generate_description_md(fields):
+    """Generate the description in Markdown format."""
     name = fields.get("Package", "UNKNOWN")
     desc_raw = fields.get("Description", "No summary available")
     try:

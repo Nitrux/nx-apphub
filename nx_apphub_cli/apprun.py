@@ -12,7 +12,7 @@ from .sandbox import get_sandbox_exec_block
 # <---
 # --->
 def generate_apprun(app_dir, config):
-    """Generate the AppRun script dynamically inside the AppImage."""
+    """Generate the AppRun script dynamically inside the AppDir."""
     apprun_path = app_dir / "AppRun"
 
     # -- Fetch and validate settings from YAML.
@@ -80,7 +80,25 @@ def generate_apprun(app_dir, config):
     current_year = datetime.now().year
     copyright_str = f"# Copyright <{current_year}> <Nitrux Latinoamericana S.C. <hello@nxos.org>>"
 
-    sandbox_exec_block = get_sandbox_exec_block(config.get("sandbox", {}), exec_cmd)
+    # -- Prepare sandbox directory creation if using bwrap.
+
+    sandbox = config.get("sandbox", {})
+    sandbox_type = sandbox.get("type", "none")
+    sandbox_setup = ""
+
+    if sandbox_type == "bwrap":
+        bind_dirs = []
+        for bind_type in ["bind", "bind-try"]:
+            for binding in sandbox.get(bind_type, []):
+                if isinstance(binding, str) and ":" in binding:
+                    source = binding.split(":", 1)[0].replace("~", "$HOME")
+                    bind_dirs.append(source)
+
+        if bind_dirs:
+            mkdir_commands = " ".join([f'"{d}"' for d in bind_dirs])
+            sandbox_setup = f'\n# -- Create sandbox directories if they don\'t exist.\n\nmkdir -p {mkdir_commands}\n'
+
+    sandbox_exec_block = get_sandbox_exec_block(sandbox, exec_cmd)
 
     apprun_script = f"""#!/usr/bin/env bash
 
@@ -93,7 +111,7 @@ def generate_apprun(app_dir, config):
 set -eu
 
 
-# -- Get the running directory of the AppImage.
+# -- Get the running directory.
 
 REALPATH=$(readlink -f "$0")
 APPDIR=$(dirname "$REALPATH")
@@ -111,9 +129,9 @@ if [ -z "${{XDG_DATA_DIRS+x}}" ]; then export XDG_DATA_DIRS=""; fi
 {qt_env_init}
 
 
-# -- Set environment variables for proper execution inside the AppImage.
+# -- Set environment variables for proper execution.
 
-export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin"
+export PATH="$APPDIR{setpath}:$APPDIR/usr/sbin:$PATH"
 export LD_LIBRARY_PATH="$APPDIR{setlibpath}:$APPDIR{setlibpath}/{multiarch_triplet}:$APPDIR{setlibpath}64:$APPDIR/lib:$APPDIR/lib64:$APPDIR/lib/{multiarch_triplet}:$APPDIR/lib64/{multiarch_triplet}"{ld_append_line}
 export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
 
@@ -122,7 +140,7 @@ export XDG_DATA_DIRS="$APPDIR/usr/share:$XDG_DATA_DIRS"
 
 {env_exports}
 
-
+{sandbox_setup}
 # -- Run the application.
 
 {sandbox_exec_block}

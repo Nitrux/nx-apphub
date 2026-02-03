@@ -13,7 +13,7 @@ setup(
     install_requires=[
         "requests",
         "pyyaml",
-        "tqdm",
+        "rich",
         "python-debian",
         "pyelftools",
     ],

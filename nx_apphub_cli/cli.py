@@ -20,6 +20,10 @@ from .config import load_yaml_config, validate_yaml_config
 from .generator import generate_yaml, generate_description_md
 from .manager import install, remove, search, show, update, downgrade
 from .utils import get_architecture, concurrent_downloads
+from .console import (
+    print_header, print_success, print_error, print_warning,
+    print_info, print_blank
+)
 
 # <---
 # --->
@@ -58,7 +62,7 @@ def main():
 
         # -- Building command (requires YAML file).
 
-        subparser_build = subparsers.add_parser("build", help="Build an AppImage from a local YAML file")
+        subparser_build = subparsers.add_parser("build", help="Build an custom bundle from a local YAML file")
         subparser_build.add_argument("config", metavar="CONFIG", type=str, help="Path to YAML configuration file")
         subparser_build.add_argument("--appdir-lint", metavar="APPDIR", type=str, help="Run appdir-lint after build on the specified extracted AppDir")
 
@@ -91,7 +95,10 @@ def main():
         elif args.command == "show":
             show()
         elif args.command == "build":
-            print("\n[ 🛠  Building local AppImage... ]\n")
+            print_header("🛠  Building local bundle...")
+
+            yaml_file = Path(args.config)
+            yaml_dir = yaml_file.parent
 
             config = load_yaml_config(args.config)
             validate_yaml_config(config)
@@ -131,10 +138,11 @@ def main():
 
             concurrent_downloads(dependencies, base_repos, ppa_repos, package_name)
 
-            print()
-            prepare_appimage(config)
+            print_blank()
+            prepare_appimage(config, yaml_dir=yaml_dir)
 
-            print("✅ AppImage creation complete!\n")
+            print_success("Bundle creation complete!")
+            print_blank()
 
             if args.appdir_lint:
                 app_name = config["buildinfo"]["name"]
@@ -146,9 +154,9 @@ def main():
 
                 if not lint_target.exists():
                     if not appimage_path.exists():
-                        raise BuildError(f"AppImage not found: {appimage_path}")
+                        raise BuildError(f"Bundle not found: {appimage_path}")
 
-                    print("📦 Extracting AppImage to squashfs-root/...")
+                    print_info("Extracting to squashfs-root/...", prefix="📦")
 
                     try:
                         subprocess.run(
@@ -158,7 +166,8 @@ def main():
                             stderr=subprocess.DEVNULL
                         )
                     except PermissionError:
-                        print(f"\n🚨 Warning: AppImage '{appimage_path.name}' is not executable. Attempting to fix permissions...")
+                        print_blank()
+                        print_warning(f"Warning: Bundle '{appimage_path.name}' is not executable. Attempting to fix permissions...")
                         try:
                             appimage_path.chmod(0o755)
                             subprocess.run(
@@ -167,11 +176,12 @@ def main():
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL
                             )
-                            print("✅ Successfully fixed and extracted AppImage.\n")
+                            print_success("Successfully fixed and extracted Bundle.")
+                            print_blank()
                         except Exception as e:
-                            raise BuildError(f"Failed to extract AppImage after fixing permissions: {e}")
+                            raise BuildError(f"Failed to extract after fixing permissions: {e}")
                     except subprocess.CalledProcessError as e:
-                        raise BuildError(f"Failed to extract AppImage: {e}")
+                        raise BuildError(f"Failed to extract: {e}")
 
                     lint_target = Path("squashfs-root")
 
@@ -183,7 +193,7 @@ def main():
                 try:
                     run_linter(lint_args)
                 except Exception as e:
-                    print(f"❌ appdir-lint failed: {e}")
+                    print_error(f"appdir-lint failed: {e}")
 
         elif args.command == "generate":
             integration_key = args.integration_type
@@ -257,22 +267,25 @@ def main():
 
                     f.write(yaml_str)
 
-                print(f"✅ YAML template written to: {args.output}")
+                print_success(f"YAML template written to: {args.output}")
 
                 if args.description_output and fields:
                     md = generate_description_md(fields)
                     with open(args.description_output, "w", encoding="utf-8") as desc:
                         desc.write(md)
-                    print(f"📝 Description template written to: {args.description_output}")
-                print()
+                    print_success(f"Description template written to: {args.description_output}")
+                print_blank()
         else:
             parser.print_help()
             sys.exit(1)
     except KeyboardInterrupt:
-        print("🛑 Interrupted by SIGINT. Exiting cleanly.\n")
+        print_error("Interrupted by SIGINT. Exiting cleanly.", prefix="🛑")
+        print_blank()
         sys.exit(130)
     except NxAppHubError as e:
-        print(f"\n❌ Error: {e}\n")
+        print_blank()
+        print_error(f"Error: {e}")
+        print_blank()
         sys.exit(1)
 
 if __name__ == "__main__":

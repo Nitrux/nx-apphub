@@ -316,7 +316,7 @@ def run_linter(args=None):
     """Entry point for running AppDir lint checks and reporting missing libraries."""
     if args is None:
         parser = argparse.ArgumentParser(description="Check missing shared libraries in an AppDir.")
-        parser.add_argument("appdir", type=str, help="Path to the AppDir or squashfs-root directory")
+        parser.add_argument("appdir", type=str, help="Path to the AppDir directory")
         args = parser.parse_args()
 
     appdir_path = detect_appdir(args.appdir)

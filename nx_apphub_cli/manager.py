@@ -12,6 +12,10 @@ from .builder import prepare_appimage
 from .config import load_yaml_config
 from .utils import cleanup_cache, concurrent_downloads, get_architecture
 from .exceptions import ManagerError, NxAppHubError
+from .console import (
+    console, print_header, print_success, print_error,
+    print_warning, print_info, print_message, print_blank
+)
 
 # <---
 # --->
@@ -36,7 +40,8 @@ def ensure_repo_updated():
     git_repo_url = "https://github.com/Nitrux/nx-apphub-apps.git"
 
     if repo_dir.exists() and not (repo_dir / ".git").exists():
-        print(f"🚨️ Warning: {repo_dir} is not a valid Git repository. Removing...\n")
+        print_warning(f"Warning: {repo_dir} is not a valid Git repository. Removing...")
+        print_blank()
         shutil.rmtree(repo_dir)
         repo_dir.mkdir(parents=True, exist_ok=True)
 
@@ -52,8 +57,9 @@ def ensure_repo_updated():
                 if line.startswith("??")
             ]
             if untracked:
-                print(f"🚨 Warning: Repository has untracked files: {', '.join(untracked)}")
-                print(" 🔹 Changes might be overwritten or cause conflicts.\n")
+                print_warning(f"Warning: Repository has untracked files: {', '.join(untracked)}")
+                print_info("Changes might be overwritten or cause conflicts.", prefix="🔹")
+                print_blank()
 
             pull_result = subprocess.run(
                 ["git", "-C", str(repo_dir), "pull"],
@@ -61,15 +67,18 @@ def ensure_repo_updated():
                 check=False
             )
             if pull_result.returncode == 0:
-                print("🔄 Applications repository updated.\n")
+                print_success("Applications repository updated.", prefix="🔄")
             else:
-                print("🚨 Warning: Failed to update repository. Continuing with existing version.\n")
+                print_warning("Warning: Failed to update repository. Continuing with existing version.")
+                print_blank()
 
         except Exception as e:
-            print(f"🚨 Warning: Git update check failed ({e}). Continuing...\n")
+            print_warning(f"Warning: Git update check failed ({e}). Continuing...")
+            print_blank()
 
     if not (repo_dir / ".git").exists():
-        print("🔄 Applications repository is missing or empty. Cloning fresh copy...\n")
+        print_info("Applications repository is missing or empty. Cloning fresh copy...", prefix="🔄")
+        print_blank()
         try:
             if any(repo_dir.iterdir()):
                 shutil.rmtree(repo_dir)
@@ -86,12 +95,12 @@ def ensure_repo_updated():
 
 
 def install(app_names):
-    """Fetch YAML metadata, build AppImage, and store metadata for multiple applications."""
+    """Fetch YAML metadata, build bundle, and store metadata for multiple applications."""
 
     if not isinstance(app_names, list):
         app_names = [app_names]
 
-    print(f"\n[ ⚡ Installing: {', '.join(app_names)} ]\n")
+    print_header(f"⚡ Installing: {', '.join(app_names)}")
 
     ensure_repo_updated()
 
@@ -100,16 +109,18 @@ def install(app_names):
 
     for app_name in app_names:
         app_yaml_path = repo_dir / "apps" / system_arch / app_name / "app.yml"
-        
+
         if not app_yaml_path.exists():
-            print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
+            print_error(f"Error: No YAML found for: {app_name} ({system_arch}) in repository.")
+            print_blank()
             continue
 
         config = load_yaml_config(app_yaml_path)
         app_version = config["buildinfo"].get("version", "unknown")
 
         if not app_version or app_version == "unknown":
-            print(f"    ❌ Error: No valid version found for {app_name}. Skipping installation.\n")
+            print_error(f"Error: No valid version found for: {app_name}. Skipping installation.")
+            print_blank()
             continue
 
         installed_appbox = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
@@ -117,19 +128,20 @@ def install(app_names):
             parts = installed_appbox.stem.split("-")
             installed_version = "-".join(parts[1:-1]) if len(parts) > 2 else "unknown"
 
-            print(f"    ℹ️  {app_name} is already installed (version {installed_version}). Skipping installation.")
+            print_info(f"    {app_name} is already installed (version {installed_version}). Skipping installation.")
             printed_installed_msg = True
             continue
 
         to_build.append((app_name, config))
 
     if printed_installed_msg:
-        print()
+        print_blank()
 
     for index, (app_name, config) in enumerate(to_build):
         repos_config = config["buildinfo"].get("distrorepo", {})
         if not repos_config:
-            print(f"    ❌ Error: No 'distrorepo' specified for {app_name}. Skipping installation.\n")
+            print_error(f"Error: No 'distrorepo' specified for {app_name}. Skipping installation.")
+            print_blank()
             continue
 
         base_repos = repos_config if isinstance(repos_config, list) else repos_config.get("base", [])
@@ -141,7 +153,9 @@ def install(app_names):
 
         concurrent_downloads(dependencies, base_repos, ppa_repos, app_name)
 
-        print("\n🛠  Building AppBox...\n")
+        print_blank()
+        print_info("Building AppBox...", prefix="🛠")
+        print_blank()
         prepare_appimage(config, install_mode=True)
 
         built_appbox = install_dir / f"{app_name}-{config['buildinfo'].get('version')}-{system_arch}.AppBox"
@@ -149,13 +163,16 @@ def install(app_names):
             cleanup_cache(app_name)
             raise ManagerError(f"Failed to find the built {built_appbox} file.")
 
-        print(f"✅ Installation successful!\n\n    📦 Available at: {built_appbox}")
-        print()
+        print_success("Installation successful!")
+        print_blank()
+        print_info(f"    📦 Available at: {built_appbox}", prefix="")
+        print_blank()
 
         if index < len(to_build) - 1:
-            print()
+            print_blank()
 
-    print("🎉 All requested applications have been processed!\n")
+    print_success("All requested applications have been processed!", prefix="🎉")
+    print_blank()
 
 
 def remove(app_names):
@@ -164,7 +181,7 @@ def remove(app_names):
     if isinstance(app_names, str):
         app_names = [app_names]
 
-    print(f"\n[ 🗑  Removing: {', '.join(app_names)} ]\n")
+    print_header(f"🗑  Removing: {', '.join(app_names)}")
 
     removed_apps = []
     missing_apps = []
@@ -191,24 +208,32 @@ def remove(app_names):
             continue
 
     if removed_apps:
-        print("🟢 Uninstalled:\n\n" + "\n".join(removed_apps))
+        print_success("Uninstalled:", prefix="🟢")
+        print_blank()
+        for app in removed_apps:
+            print_message(app)
 
     if firejail_profiles_deleted:
-        print(f"\n🔒 Firejail profile(s) deleted: {', '.join(sorted(firejail_profiles_deleted))}")
+        print_blank()
+        print_info(f"Firejail profile(s) deleted: {', '.join(sorted(firejail_profiles_deleted))}", prefix="🔒")
 
     if missing_apps:
         if removed_apps or firejail_profiles_deleted:
-            print()
-        print("🔴 Skipped:\n\n" + "\n".join(missing_apps))
+            print_blank()
+        print_error("Skipped:", prefix="🔴")
+        print_blank()
+        for app in missing_apps:
+            print_message(app)
 
-    print()
-    print("🎉 All requested applications have been processed!\n")
+    print_blank()
+    print_success("All requested applications have been processed!", prefix="🎉")
+    print_blank()
 
 
 def search(app_names):
     """Search for specific applications in the local repository."""
 
-    print(f"\n[ 🔍 Searching for: {', '.join(app_names)} ]\n")
+    print_header(f"🔍 Searching for: {', '.join(app_names)}")
 
     ensure_repo_updated()
 
@@ -241,12 +266,20 @@ def search(app_names):
                 missing_apps.append(f"    ❌ {p.name} (Missing YAML)")
 
     if found_apps:
-        print("\n🟢 Found Applications:\n")
-        print("\n".join(found_apps), "\n")
+        print_blank()
+        print_success("Found Applications:", prefix="🟢")
+        print_blank()
+        for app in found_apps:
+            print_message(app)
+        print_blank()
 
     if missing_apps:
-        print("\n🔴 Not Found:\n")
-        print("\n".join(missing_apps), "\n")
+        print_blank()
+        print_error("Not Found:", prefix="🔴")
+        print_blank()
+        for app in missing_apps:
+            print_message(app)
+        print_blank()
 
 
 def update(app_names):
@@ -257,67 +290,72 @@ def update(app_names):
 
     app_names = list(dict.fromkeys(app_names))
 
-    print(f"\n[ 📤 Updating: {', '.join(app_names)} ]\n")
+    print_header(f"📤 Updating: {', '.join(app_names)}")
 
     ensure_repo_updated()
 
     for app_name in app_names:
-        print(f"\n[ 🔄 Checking updates for: {app_name} ]\n")
+        print_header(f"🔄 Checking updates for: {app_name}")
 
         installed_app = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
 
         if not installed_app:
-            print(f"    ❌ Error: {app_name} is not installed. Cannot update.\n")
+            print_error(f"Error: {app_name} is not installed. Cannot update.")
+            print_blank()
             continue
 
         installed_parts = installed_app.stem.split("-")
         installed_version = "-".join(installed_parts[1:-1]) if len(installed_parts) > 2 else "unknown"
 
         app_yaml_path = repo_dir / "apps" / system_arch / app_name / "app.yml"
-        
+
         if not app_yaml_path.exists():
-            print(f"    ❌ Error: No YAML found for {app_name} ({system_arch}) in repository.\n")
-            print()
+            print_error(f"Error: No YAML found for: {app_name} ({system_arch}) in repository.")
+            print_blank()
+            print_blank()
             continue
 
         config = load_yaml_config(app_yaml_path)
         latest_version = config["buildinfo"].get("version", "unknown")
 
         if not latest_version or latest_version == "unknown":
-            print(f"    ❌ Error: No valid version information found for {app_name}. Aborting update.\n")
+            print_error(f"Error: No valid version information found for: {app_name}. Aborting update.")
+            print_blank()
             continue
 
         if installed_version == latest_version:
-            print(f"    ✅ {app_name} is already up to date (version {installed_version}).\n")
+            print_success(f"    {app_name} is already up to date (version {installed_version}).")
+            print_blank()
             continue
 
-        print(f"    🔄 New version available: {latest_version} (Installed: {installed_version})\n")
+        print_info(f"    New version available: {latest_version} (Installed: {installed_version})", prefix="🔄")
+        print_blank()
 
         try:
             installed_app.chmod(0o644)
         except OSError as e:
-            print(f"🚨️ Warning: Failed to modify permissions of {installed_app}. Reason: {e}")
+            print_warning(f"Warning: Failed to modify permissions of {installed_app}. Reason: {e}")
 
         backup_name = backup_dir / f"{app_name}-{installed_version}-{system_arch}.tar"
         try:
             with tarfile.open(backup_name, "w") as tar:
                 tar.add(installed_app, arcname=installed_app.name)
-            print(f"📦 Backup created: {backup_name}")
+            print_info(f"Backup created: {backup_name}", prefix="📦")
         except Exception as e:
-            print(f"❌ Error creating backup for {app_name}: {e}")
+            print_error(f"Error creating backup for: {app_name}: {e}")
             continue
 
         try:
             installed_app.unlink()
         except OSError as e:
-            print(f"❌ Error deleting {installed_app}: {e}")
+            print_error(f"Error deleting {installed_app}: {e}")
             continue
 
         try:
             install([app_name])
         except NxAppHubError as e:
-            print(f"❌ Update failed: {e}")
-            print("    Restoring backup...")
+            print_error(f"Update failed: {e}")
+            print_info("    Restoring backup...", prefix="")
 
             try:
                 with tarfile.open(backup_name, "r") as tar:
@@ -325,27 +363,30 @@ def update(app_names):
                 restored_appbox = install_dir / f"{app_name}-{installed_version}-{system_arch}.AppBox"
                 if restored_appbox.exists():
                     restored_appbox.chmod(0o755)
-                    print(f"♻️ Restored {app_name} to version {installed_version}\n")
+                    print_info(f"Restored {app_name} to version {installed_version}", prefix="♻️")
+                    print_blank()
                 else:
-                    print(f"❌ Failed to restore {app_name}.")
+                    print_error(f"Failed to restore {app_name}.")
             except Exception as restore_err:
-                print(f"❌ Critical error: Could not restore backup for {app_name}. Reason: {restore_err}")
+                print_error(f"Error: Could not restore backup for: {app_name}. Reason: {restore_err}")
             continue
 
         new_appbox = install_dir / f"{app_name}-{latest_version}-{system_arch}.AppBox"
         if new_appbox.exists():
-            print(f"✅ {app_name} successfully updated to version {latest_version}!\n")
+            print_success(f"{app_name} successfully updated to version {latest_version}!")
+            print_blank()
         else:
-            print(f"❌ Update failed: No new AppImage found. Restoring backup...")
+            print_error("Update failed: No new AppImage found. Restoring backup...")
             try:
                 with tarfile.open(backup_name, "r") as tar:
                     tar.extractall(path=install_dir)
                 restored_appbox = install_dir / f"{app_name}-{installed_version}-{system_arch}.AppBox"
                 if restored_appbox.exists():
                     restored_appbox.chmod(0o755)
-                    print(f"♻️ Restored {app_name} to version {installed_version}\n")
+                    print_info(f"Restored {app_name} to version {installed_version}", prefix="♻️")
+                    print_blank()
             except Exception as e:
-                print(f"❌ Critical error: Could not restore backup for {app_name}. Reason: {e}")
+                print_error(f"Error: Could not restore backup for: {app_name}. Reason: {e}")
 
 
 def downgrade(app_names):
@@ -354,20 +395,23 @@ def downgrade(app_names):
     if isinstance(app_names, str):
         app_names = [app_names]
 
-    print(f"\n[ ⏳ Downgrading: {', '.join(app_names)} ]\n")
+    print_header(f"⏳ Downgrading: {', '.join(app_names)}")
 
     for app_name in app_names:
-        print(f"\n🔽 Processing downgrade for: {app_name}...\n")
+        print_info(f"Processing downgrade for: {app_name}...", prefix="🔽")
+        print_blank()
 
         backups = sorted(backup_dir.glob(f"{app_name}-*-{system_arch}.tar"), reverse=True)
 
         if not backups:
-            print(f"    ❌ No backups found for {app_name}.\n")
+            print_error(f"Error: No backups found for: {app_name}.")
+            print_blank()
             continue
 
-        print("📦 Available backups:\n")
+        print_info("Available backups:", prefix="📦")
+        print_blank()
         for i, backup in enumerate(backups, 1):
-            print(f"    {i}. {backup.name}")
+            print_message(f"    {i}. {backup.name}")
 
         while True:
             choice = input(f"\n🔢 Enter the number of the backup to restore for {app_name} (default = latest): ").strip()
@@ -377,11 +421,14 @@ def downgrade(app_names):
             if choice.isdigit() and 1 <= int(choice) <= len(backups):
                 index = int(choice) - 1
                 break
-            print("\n    ⛔ Invalid selection. Please enter a valid number.")
+            print_blank()
+            print_error("    Invalid selection. Please enter a valid number.", prefix="⛔")
 
         selected_backup = backups[index]
 
-        print(f"\n🔄 Restoring backup: {selected_backup.name}...\n")
+        print_blank()
+        print_info(f"Restoring backup: {selected_backup.name}...", prefix="🔄")
+        print_blank()
 
         try:
             with tarfile.open(selected_backup, "r") as tar:
@@ -396,26 +443,30 @@ def downgrade(app_names):
                     break
 
             if not restored_appbox:
-                print(f"❌ Error: Restoration failed! No valid AppBox found in {install_dir}.\n")
+                print_error(f"Error: Restoration failed! No valid AppBox found in {install_dir}.")
+                print_blank()
                 continue
 
             restored_appbox.chmod(0o755)
-            print(f"✅ Successfully restored {app_name} to {restored_appbox.name}\n")
+            print_success(f"Successfully restored {app_name} to {restored_appbox.name}")
+            print_blank()
 
             for newer_version in install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"):
                 if newer_version != restored_appbox:
                     try:
                         newer_version.unlink()
                     except OSError as e:
-                        print(f"🚨️ Warning: Failed to remove newer version {newer_version}. Reason: {e}")
+                        print_warning(f"Warning: Failed to remove newer version {newer_version}. Reason: {e}")
 
         except (tarfile.TarError, OSError) as e:
-            print(f"❌ Error: Could not restore {app_name} from backup. Reason: {e}")
+            print_error(f"Error: Could not restore {app_name} from backup. Reason: {e}")
 
-    print("🎉 All requested applications have been processed!\n")
+    print_success("All requested applications have been processed!", prefix="🎉")
+    print_blank()
 
 
 def format_size(size_bytes):
+    """Format a size in bytes to a human-readable string."""
     for unit in ["B", "KiB", "MiB", "GiB", "TiB"]:
         if size_bytes < 1024:
             return f"{size_bytes:.2f} {unit}"
@@ -425,12 +476,13 @@ def format_size(size_bytes):
 
 def show():
     """Show installed AppBoxes."""
-    print("\n[ 📦 Installed AppBoxes ]\n")
+    print_header("📦 Installed AppBoxes")
 
     installed_apps = list(install_dir.glob(f"*-{system_arch}.AppBox"))
 
     if not installed_apps:
-        print("❌ No applications installed.\n")
+        print_error("No applications installed.")
+        print_blank()
         return
 
     installed_apps.sort(key=lambda app: app.stat().st_size, reverse=True)
@@ -440,10 +492,13 @@ def show():
     for app in installed_apps:
         size = app.stat().st_size
         total_size += size
-        print(f"    ✅ {app.name} ({format_size(size)})")
+        print_success(f"    {app.name} ({format_size(size)})")
 
-    print(f"\n📁 Total: {len(installed_apps)} installed in {install_dir}\n")
-    print(f"📦 Size: {format_size(total_size)}\n")
+    print_blank()
+    print_info(f"Total: {len(installed_apps)} installed in {install_dir}", prefix="📁")
+    print_blank()
+    print_info(f"Size: {format_size(total_size)}", prefix="📦")
+    print_blank()
 
 
 # -- Export functions.

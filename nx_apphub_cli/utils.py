@@ -12,9 +12,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock, Event
 
 import requests
-from tqdm import tqdm
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+from rich.console import Console
 
 from .exceptions import ConfigError, DownloadError
+from .console import print_success, print_warning, print_info, print_blank
+
+_rich_console = Console()
 
 
 # -- Define base directories.
@@ -50,19 +54,25 @@ def cleanup_cache(package_name=None):
         target_dir = cache_dir / package_name
 
         if target_dir.exists():
-            print(f"\n🧹 Cleaning up build cache for: {package_name}...\n")
+            print_blank()
+            print_info(f"Cleaning up build cache for: {package_name}...", prefix="🧹")
+            print_blank()
             shutil.rmtree(target_dir, ignore_errors=True)
         else:
-            print(f"\n🚨 Warning: No build cache found for: {package_name}. Skipping cleanup.\n")
+            print_blank()
+            print_warning(f"Warning: No build cache found for: {package_name}. Skipping cleanup.")
+            print_blank()
     else:
-        print("\nℹ️ Skipping full cache cleanup. Only removing package-specific cache.")
+        print_blank()
+        print_info("Skipping full cache cleanup. Only removing package-specific cache.")
+
 
 
 def get_appimagetool(quiet=True):
     """Ensure appimagetool is available by downloading it if missing."""
     if not appimagetool_path.exists():
         if not quiet:
-            print("appimagetool not found! Downloading from GitHub...")
+            print_info("appimagetool not found! Downloading from GitHub...", prefix="")
         local_bin.mkdir(parents=True, exist_ok=True)
 
         # -- Detect system architecture and download the correct executable.
@@ -80,7 +90,7 @@ def get_appimagetool(quiet=True):
 
             appimagetool_path.chmod(0o755)
             if not quiet:
-                print(f"✅  appimagetool downloaded and saved to {appimagetool_path}")
+                print_success(f"appimagetool downloaded and saved to {appimagetool_path}")
 
         except requests.RequestException as e:
             raise DownloadError(f"Error downloading appimagetool: {e}") from e
@@ -92,7 +102,7 @@ def get_go_appimagetool(quiet=True):
     """Ensure go-appimagetool is available by downloading it if missing."""
     if not go_appimagetool_path.exists():
         if not quiet:
-            print("go-appimagetool not found! Downloading from GitHub...")
+            print_info("go-appimagetool not found! Downloading from GitHub...", prefix="")
         local_bin.mkdir(parents=True, exist_ok=True)
 
         arch = get_architecture()
@@ -116,7 +126,7 @@ def get_go_appimagetool(quiet=True):
 
                 go_appimagetool_path.chmod(0o755)
                 if not quiet:
-                    print(f"✅  go-appimagetool downloaded and saved to {go_appimagetool_path}")
+                    print_success(f"go-appimagetool downloaded and saved to {go_appimagetool_path}")
 
             else:
                 raise DownloadError(f"Could not find a matching go-appimagetool build for architecture: {arch}")
@@ -132,7 +142,7 @@ def get_uruntime(quiet=True):
 
     if not uruntime_path.exists():
         if not quiet:
-            print("❌ Error: uruntime not found! Downloading from GitHub...")
+            print_info("uruntime not found! Downloading from GitHub...")
 
         local_bin.mkdir(parents=True, exist_ok=True)
 
@@ -151,7 +161,7 @@ def get_uruntime(quiet=True):
 
             uruntime_path.chmod(0o755)
             if not quiet:
-                print(f"✅  uruntime downloaded and saved to {uruntime_path}")
+                print_success(f"uruntime downloaded and saved to {uruntime_path}")
 
         except requests.RequestException as e:
             raise DownloadError(f"Error downloading uruntime: {e}") from e
@@ -164,10 +174,12 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
     from .extractor import extract_deb
 
     if not dependencies:
-        print("📦 No dependencies listed.")
+        print_info("No dependencies listed.", prefix="📦")
         return
 
-    print(f"📥 Downloading {len(dependencies)} dependencies:\n")
+    print_blank()
+    print_info(f"Downloading {len(dependencies)} dependencies:", prefix="📥")
+    print_blank()
 
     download_tasks = []
     for dep in dependencies:
@@ -186,18 +198,18 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
 
         download_tasks.append((pkg_name, repo_list))
 
-    terminal_width = shutil.get_terminal_size((80, 20)).columns
-
     try:
-        with tqdm(
-            total=len(download_tasks),
-            desc="    ⏬ Fetching PKGs",
-            unit="pkg",
-            ncols=terminal_width,
-            dynamic_ncols=False,
-            bar_format="{desc} {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} • {rate_fmt:<14}",
-            leave=True
+        with Progress(
+            TextColumn("[bold blue]    ⏬ Fetching PKGs"),
+            BarColumn(),
+            TaskProgressColumn(),
+            transient=False
         ) as progress:
+            task = progress.add_task("download", total=len(download_tasks))
+
+            from . import downloader
+            downloader.set_console(progress.console)
+
             with ThreadPoolExecutor(max_workers=3) as executor:
                 log_lock = Lock()
                 stop_event = Event()
@@ -220,7 +232,7 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
                         if deb_path:
                             extract_deb(deb_path, cache_name)
 
-                        progress.update(1)
+                        progress.update(task, advance=1)
 
                     except Exception as e:
                         if not has_failed:
@@ -232,9 +244,9 @@ def concurrent_downloads(dependencies, base_repos, ppa_repos, cache_name):
                             os.kill(os.getpid(), signal.SIGINT)
 
                 if has_failed:
-                    progress.close()
+                    progress.stop()
                     cleanup_cache(cache_name)
-                    raise DownloadError(f"AppImage build failed! {first_exception}") from first_exception
+                    raise DownloadError(f"Bundle build failed! {first_exception}") from first_exception
 
     except KeyboardInterrupt:
         try:

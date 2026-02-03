@@ -15,11 +15,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from debian import debian_support
-from tqdm import tqdm
+from rich.console import Console
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .exceptions import DownloadError
+from .console import print_error, print_warning
+
+console = Console()
+
+def set_console(new_console):
+    """Set the global console for output (used by progress bars)."""
+    global console
+    console = new_console
 
 # <---
 # --->
@@ -114,13 +122,13 @@ def build_probe_tasks(repos, pkg_name, quiet):
 
         if not (distro and release and arch):
             if not quiet:
-                print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
+                print_error(f"Error: Missing required repo keys for {pkg_name}: {repo}")
             continue
 
         mirror_list = get_mirrors_for_distro(distro)
         if not mirror_list:
             if not quiet:
-                print(f"⚠️ Skipping unknown distro: {distro}")
+                print_warning(f"Skipping unknown distro: {distro}", prefix="⚠️")
             continue
 
         # -- Randomize the mirror list to spread load across mirrors.
@@ -176,7 +184,11 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, stop_event=None, qui
 
     if pkg_name in excluded_packages:
         if not quiet:
-            print(f"\n\n        ⚠️ Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppImage.\n")
+            from .console import print_blank
+            print_blank()
+            print_blank()
+            print_warning(f"        Skipping {pkg_name}: This package is a core system library and should not be bundled in the AppDir.", prefix="⚠️")
+            print_blank()
         return None
 
     if stop_event and stop_event.is_set():
@@ -250,18 +262,18 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, stop_event=None, qui
 
     if not quiet:
         if fetch_failures:
-            tqdm.write("\n" + "\n".join(f"        {msg}" for msg in fetch_failures))
+            console.print("\n" + "\n".join(f"        {msg}" for msg in fetch_failures))
         if no_metadata:
-            tqdm.write("\n" + "\n".join(f"        {msg}" for msg in no_metadata))
+            console.print("\n" + "\n".join(f"        {msg}" for msg in no_metadata))
         if mirror_logs:
-            tqdm.write("\n" + "\n".join(f"        {msg}" for msg in mirror_logs))
+            console.print("\n" + "\n".join(f"        {msg}" for msg in mirror_logs))
 
     if not candidates:
         msg = f"Unable to find '{pkg_name}' after probing {len(probe_tasks)} mirror/component pairs. Aborting."
         if log_lock:
             with log_lock:
-                tqdm.write(f"❌ {msg}")
-                tqdm.write("")
+                console.print(f"❌ {msg}")
+                console.print("")
         raise DownloadError(msg)
 
     version_groups = defaultdict(list)
@@ -280,11 +292,11 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, stop_event=None, qui
 
     if not quiet:
         with log_lock:
-            tqdm.write("")
-            tqdm.write(f"        📦 Package: {pkg_name}")
-            tqdm.write(f"        🔹 Version: {best['version_str']}")
-            tqdm.write(f"        🔹 Source:  {best['source']}\n")
-            tqdm.write(f"        📥 Downloading: {pkg_name} from: {best['url']}...\n")
+            console.print("")
+            console.print(f"        📦 Package: {pkg_name}")
+            console.print(f"        🔹 Version: {best['version_str']}")
+            console.print(f"        🔹 Source:  {best['source']}\n")
+            console.print(f"        📥 Downloading: {pkg_name} from: {best['url']}...\n")
 
     if stop_event and stop_event.is_set():
         raise DownloadError("Download cancelled.")
@@ -305,21 +317,21 @@ def get_latest_deb(pkg_name, repos, package_name, log_lock, stop_event=None, qui
         path = candidate["path"]
         try:
             if not quiet:
-                tqdm.write(f"        🔁 Retrying download for: {pkg_name} from: {url}")
+                console.print(f"        🔁 Retrying download for: {pkg_name} from: {url}")
             return download_file(url, path, quiet=quiet)
         except DownloadError as e:
             download_errors.append(f"{pkg_name} (retry): {e} ← {url}")
 
     if not quiet and download_errors and log_lock:
         with log_lock:
-            tqdm.write("\n" + "\n".join(f"        ⚠️ {msg}" for msg in download_errors) + "\n")
+            console.print("\n" + "\n".join(f"        ⚠️ {msg}" for msg in download_errors) + "\n")
 
     msg = f"All mirrors failed to download: {pkg_name}."
 
     if log_lock:
         with log_lock:
-            tqdm.write(f"❌ {msg}")
-            tqdm.write("")
+            console.print(f"❌ {msg}")
+            console.print("")
     raise DownloadError(msg)
 
 
@@ -414,11 +426,11 @@ def fetch_package_metadata(mirror, release, arch, pkg_name, component="main", st
 
 
 def fetch_from_ppa(pkg_name, repo, deb_dir, quiet=True):
-
+    """Download packages from a PPA repository."""
     ppa = repo["ppa"].strip()
     if not ppa or "/" not in ppa:
         if not quiet:
-            tqdm.write(f"⛔ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
+            console.print(f"⛔ Invalid PPA format: {ppa}. Expected format: '<user>/<ppa-name>'.")
         return None
 
     distro = repo.get("distro", "ubuntu").lower()
@@ -427,7 +439,7 @@ def fetch_from_ppa(pkg_name, repo, deb_dir, quiet=True):
 
     if not (distro and release and arch):
         if not quiet:
-            tqdm.write(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
+            console.print(f"❌ Error: Missing required repo keys for {pkg_name}: {repo}")
         return None
 
     base_url = f"https://ppa.launchpadcontent.net/{ppa}/{distro}".rstrip('/')
@@ -450,12 +462,13 @@ def fetch_from_ppa(pkg_name, repo, deb_dir, quiet=True):
 
     except Exception as e:
         if not quiet:
-            tqdm.write(f"⛔ Failed to fetch metadata for: {pkg_name} from: {base_url}: {e}")
+            console.print(f"⛔ Failed to fetch metadata for: {pkg_name} from: {base_url}: {e}")
 
     return None
 
 
 def download_file(url, destination, quiet=True):
+    """Download a file from the given URL to the given destination."""
     try:
         response = session.get(url, timeout=20, stream=True)
         response.raise_for_status()
@@ -468,7 +481,7 @@ def download_file(url, destination, quiet=True):
                     f.write(chunk)
 
         if not quiet:
-            tqdm.write(f"        🎉 Successfully downloaded: {destination}\n")
+            console.print(f"        🎉 Successfully downloaded: {destination}\n")
 
         return destination
 

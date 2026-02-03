@@ -10,6 +10,7 @@ import yaml
 
 from .exceptions import ConfigError
 from .sandbox import get_known_apparmor_profiles, bwrap_boolean_flags, bwrap_list_flags, bwrap_key_value_flags
+from .console import print_warning, print_blank, print_success
 
 # <---
 # --->
@@ -188,8 +189,10 @@ def validate_yaml_config(config):
             if profile != "none":
                 known_profiles = get_known_apparmor_profiles()
                 if profile not in known_profiles:
-                    print(f"🚨 Warning: aa_profile '{profile}' does not match any profile in /etc/apparmor.d/")
-                    print("\n   👉 To fix this, create or rename the profile file or set 'aa_profile: none'.\n")
+                    print_warning(f"Warning: aa_profile '{profile}' does not match any profile in /etc/apparmor.d/")
+                    print_blank()
+                    print_warning("   👉 To fix this, create or rename the profile file or set 'aa_profile: none'.", prefix="")
+                    print_blank()
 
         for key in sandbox.keys():
             if key not in ({"type"} | required | optional):
@@ -247,4 +250,5 @@ def validate_yaml_config(config):
     if not isinstance(runtime, str) or runtime not in allowed_runtimes:
         raise ConfigError(f"'buildinfo.runtime' must be one of: {', '.join(sorted(allowed_runtimes))}.")
 
-    print("✅ YAML validation passed successfully.\n")
+    print_success("YAML validation passed successfully.")
+    print_blank()

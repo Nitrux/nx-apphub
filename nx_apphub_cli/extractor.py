@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 from .exceptions import ExtractionError
+from .console import print_success, print_info
 
 # <---
 # --->
@@ -27,7 +28,7 @@ def extract_deb(deb_path, package_name, quiet=True):
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     if not quiet:
-        print(f"🗄️ Extracting {deb_path}...")
+        print_info(f"Extracting {deb_path}...", prefix="🗄️")
 
     try:
         subprocess.run(
@@ -67,7 +68,7 @@ def extract_deb(deb_path, package_name, quiet=True):
             raise ExtractionError(f"Unsupported archive format in {deb_path}: {data_archive.suffix}")
 
         if not quiet:
-            print(f"🗃️ Extracted {deb_path} successfully.")
+            print_success(f"Extracted {deb_path} successfully.", prefix="🗃️")
 
         # -- Ensure that libraries are correctly moved without overwriting existing ones.
 
@@ -79,7 +80,7 @@ def extract_deb(deb_path, package_name, quiet=True):
             if not target_file.exists():
                 shutil.move(str(extracted_file), str(target_file))
                 if not quiet:
-                    print(f"Moved {extracted_file} → {target_file}")
+                    print_info(f"Moved {extracted_file} → {target_file}", prefix="")
 
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.decode(errors='replace').strip() if e.stderr else str(e)
