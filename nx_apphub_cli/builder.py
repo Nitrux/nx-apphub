@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 from pathlib import Path
+from datetime import datetime
 
 from .exceptions import BuildError
 from .config import get_apprunconf_value
@@ -541,6 +542,28 @@ def prepare_appimage(config, install_mode=False, quiet=True, yaml_dir=None):
     # -- Build.
 
     package_appdir(app_name, app_dir, output_file, appimagetool_binary, runtime, config, quiet)
+
+    # -- Create build marker file for AppBoxes to prove official build.
+
+    if install_mode:
+        nx_apphub_cli_dir = Path.home() / ".local/share/nx-apphub-cli"
+        build_markers_dir = nx_apphub_cli_dir / ".built"
+        build_markers_dir.mkdir(parents=True, exist_ok=True)
+
+        marker_filename = f"{app_name}-{version}-{platform.machine().lower()}"
+        marker_file = build_markers_dir / marker_filename
+
+        marker_content = f"""# This file is a build marker created by nx-apphub-cli
+# DO NOT manually create or modify this file
+# Doing so may cause integration issues and is not supported
+# Built: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+# AppBox: {output_file.name}
+"""
+
+        marker_file.write_text(marker_content)
+
+        if not quiet:
+            print_info(f"Build marker created: {marker_file}", prefix="✓")
 
     if not quiet:
         print_info(f"Bundle ready: {output_file}", prefix="📦")

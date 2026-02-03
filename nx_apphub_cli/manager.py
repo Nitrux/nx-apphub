@@ -58,7 +58,8 @@ def ensure_repo_updated():
             ]
             if untracked:
                 print_warning(f"Warning: Repository has untracked files: {', '.join(untracked)}")
-                print_info("Changes might be overwritten or cause conflicts.", prefix="🔹")
+                print_blank()
+                print_info("These changes can cause conflicts. Continuing with existing version...", prefix="🔹")
                 print_blank()
 
             pull_result = subprocess.run(
