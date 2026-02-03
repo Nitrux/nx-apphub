@@ -59,8 +59,14 @@ def ensure_repo_updated():
             if untracked:
                 print_warning(f"Warning: Repository has untracked files: {', '.join(untracked)}")
                 print_blank()
-                print_info("These changes can cause conflicts. Continuing with existing version...", prefix="🔹")
+                print_info("Discarding untracked files...", prefix="🔹")
                 print_blank()
+
+                subprocess.run(
+                    ["git", "-C", str(repo_dir), "clean", "-fd"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    check=False
+                )
 
             pull_result = subprocess.run(
                 ["git", "-C", str(repo_dir), "pull"],
@@ -112,7 +118,6 @@ def install(app_names):
 
         if not app_yaml_path.exists():
             print_error(f"Error: No YAML found for: {app_name} ({system_arch}) in repository.")
-            print_blank()
             continue
 
         config = load_yaml_config(app_yaml_path)
@@ -186,6 +191,7 @@ def remove(app_names):
     removed_apps = []
     missing_apps = []
     firejail_profiles_deleted = []
+    build_markers_deleted = []
 
     for app_name in app_names:
         app_file = next(install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"), None)
@@ -195,6 +201,8 @@ def remove(app_names):
             continue
 
         try:
+            filename_stem = app_file.stem
+
             app_file.unlink()
             removed_apps.append(f"    ✅ {app_name} (Deleted)")
 
@@ -202,6 +210,11 @@ def remove(app_names):
             if firejail_profile.exists():
                 firejail_profile.unlink()
                 firejail_profiles_deleted.append(firejail_profile.name)
+
+            build_marker = repo_base_dir / ".built" / filename_stem
+            if build_marker.exists():
+                build_marker.unlink()
+                build_markers_deleted.append(filename_stem)
 
         except PermissionError:
             missing_apps.append(f"    ❌ {app_name} (Permission Denied)")
@@ -216,6 +229,10 @@ def remove(app_names):
     if firejail_profiles_deleted:
         print_blank()
         print_info(f"Firejail profile(s) deleted: {', '.join(sorted(firejail_profiles_deleted))}", prefix="🔒")
+
+    if build_markers_deleted:
+        print_blank()
+        print_info(f"Build marker(s) deleted: {', '.join(sorted(build_markers_deleted))}", prefix="✓")
 
     if missing_apps:
         if removed_apps or firejail_profiles_deleted:
@@ -311,7 +328,6 @@ def update(app_names):
 
         if not app_yaml_path.exists():
             print_error(f"Error: No YAML found for: {app_name} ({system_arch}) in repository.")
-            print_blank()
             print_blank()
             continue
 
