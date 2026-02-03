@@ -133,9 +133,23 @@ def install(app_names):
             parts = installed_appbox.stem.split("-")
             installed_version = "-".join(parts[1:-1]) if len(parts) > 2 else "unknown"
 
-            print_info(f"    {app_name} is already installed (version {installed_version}). Skipping installation.")
-            printed_installed_msg = True
-            continue
+            if installed_version == app_version:
+                print_info(f"    {app_name} is already installed (version {installed_version}). Skipping installation.")
+                printed_installed_msg = True
+                continue
+            else:
+                print_info(f"    {app_name} version mismatch: installed {installed_version}, YAML has {app_version}. Replacing...", prefix="🔄")
+
+                old_marker_filename = installed_appbox.stem
+                try:
+                    installed_appbox.unlink()
+
+                    old_marker = repo_base_dir / ".built" / old_marker_filename
+                    if old_marker.exists():
+                        old_marker.unlink()
+                except OSError as e:
+                    print_error(f"Error removing old version {installed_version}: {e}")
+                    continue
 
         to_build.append((app_name, config))
 
@@ -363,7 +377,15 @@ def update(app_names):
             continue
 
         try:
+            old_marker_filename = installed_app.stem
+
             installed_app.unlink()
+
+            old_marker = repo_base_dir / ".built" / old_marker_filename
+            if old_marker.exists():
+                old_marker.unlink()
+                print_blank()
+                print_info(f"Removed old build marker: {old_marker_filename}", prefix="✓")
         except OSError as e:
             print_error(f"Error deleting {installed_app}: {e}")
             continue
@@ -468,10 +490,32 @@ def downgrade(app_names):
             print_success(f"Successfully restored {app_name} to {restored_appbox.name}")
             print_blank()
 
+            # Create marker file for the restored AppBox
+            from datetime import datetime
+            marker_filename = restored_appbox.stem
+            marker_file = repo_base_dir / ".built" / marker_filename
+            marker_file.parent.mkdir(parents=True, exist_ok=True)
+            marker_content = f"""# This file is a build marker created by nx-apphub-cli
+# DO NOT manually create or modify this file
+# Doing so may cause integration issues and is not supported
+# Built: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+# AppBox: {restored_appbox.name}
+# Restored from backup: {selected_backup.name}
+"""
+            marker_file.write_text(marker_content)
+            print_info(f"Build marker created: {marker_filename}", prefix="✓")
+            print_blank()
+
+            # Remove newer versions and their markers
             for newer_version in install_dir.glob(f"{app_name}-*-{system_arch}.AppBox"):
                 if newer_version != restored_appbox:
                     try:
                         newer_version.unlink()
+
+                        # Also remove the marker for the newer version
+                        newer_marker = repo_base_dir / ".built" / newer_version.stem
+                        if newer_marker.exists():
+                            newer_marker.unlink()
                     except OSError as e:
                         print_warning(f"Warning: Failed to remove newer version {newer_version}. Reason: {e}")
 
