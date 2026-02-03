@@ -24,7 +24,7 @@ from .console import (
 system_arch = get_architecture()
 
 repo_base_dir = Path.home() / ".local/share/nx-apphub-cli"
-repo_dir = repo_base_dir / "apps"
+repo_dir = repo_base_dir / "repo"
 backup_dir = repo_base_dir / "backups"
 install_dir = Path.home() / ".local/bin/nx-apphub"
 
@@ -78,7 +78,6 @@ def ensure_repo_updated():
 
     if not (repo_dir / ".git").exists():
         print_info("Applications repository is missing or empty. Cloning fresh copy...", prefix="🔄")
-        print_blank()
         try:
             if any(repo_dir.iterdir()):
                 shutil.rmtree(repo_dir)
