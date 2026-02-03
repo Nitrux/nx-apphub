@@ -174,7 +174,7 @@ def install(app_names):
         print_blank()
 
         if index < len(to_build) - 1:
-            print_blank()
+            print_info(f"▬▬▬ Building next application ({index + 2}/{len(to_build)}): {to_build[index + 1][0]} ▬▬▬", prefix="")
 
     print_success("All requested applications have been processed!", prefix="🎉")
     print_blank()
