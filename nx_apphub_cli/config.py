@@ -3,6 +3,7 @@
 # Copyright <2025> <Uri Herrera <uri_herrera@nxos.org>>
 
 import os
+import re
 
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from .console import print_warning, print_blank, print_success
 # -- Base cache directory.
 
 cache_dir = Path.home() / ".cache/nx-apphub-cli"
+debian_snapshot_pattern = re.compile(r"^\d{8}T\d{6}Z$")
 
 
 # -- Load YAML configuration.
@@ -151,27 +153,52 @@ def validate_yaml_config(config):
 
     distrorepo = config["buildinfo"].get("distrorepo", {})
     if isinstance(distrorepo, list):
-        arches = set()
-        for entry in distrorepo:
-            arch = entry.get("arch")
-            distro = entry.get("distro")
+        repos_to_validate = distrorepo
+    elif isinstance(distrorepo, dict):
+        repos_to_validate = distrorepo.get("base", [])
+    else:
+        repos_to_validate = []
 
-            if not arch:
-                raise ConfigError("Missing 'arch' key in distrorepo entry.")
+    arches = set()
+    for entry in repos_to_validate:
+        if not isinstance(entry, dict):
+            raise ConfigError("Each distrorepo entry must be a dictionary.")
 
-            if not distro:
-                raise ConfigError("Missing 'distro' key in distrorepo entry.")
+        arch = entry.get("arch")
+        distro = entry.get("distro")
+        snapshot = entry.get("snapshot")
 
-            if distro == "ubuntu" and arch != "amd64":
-                raise ConfigError("'distrorepo.arch' for 'ubuntu' must be: amd64.")
+        if not arch:
+            raise ConfigError("Missing 'arch' key in distrorepo entry.")
 
-            if distro == "ubuntu-ports" and arch not in ("arm64", "riscv64"):
-                raise ConfigError("'distrorepo.arch' for 'ubuntu-ports' must be: arm64 or riscv64.")
+        if not distro:
+            raise ConfigError("Missing 'distro' key in distrorepo entry.")
 
-            arches.add(arch)
+        if not isinstance(distro, str):
+            raise ConfigError("'distrorepo.distro' must be a string.")
 
-        if len(arches) > 1:
-            raise ConfigError("'distrorepo.arch' must not have mixed architectures.")
+        distro = distro.lower()
+
+        if distro == "ubuntu" and arch != "amd64":
+            raise ConfigError("'distrorepo.arch' for 'ubuntu' must be: amd64.")
+
+        if distro == "ubuntu-ports" and arch not in ("arm64", "riscv64"):
+            raise ConfigError("'distrorepo.arch' for 'ubuntu-ports' must be: arm64 or riscv64.")
+
+        if distro == "debian-snapshot":
+            if not snapshot:
+                raise ConfigError("'distrorepo.snapshot' is required when 'distrorepo.distro' is: debian-snapshot.")
+            if not isinstance(snapshot, str):
+                raise ConfigError("'distrorepo.snapshot' must be a string.")
+            if not debian_snapshot_pattern.match(snapshot):
+                raise ConfigError("'distrorepo.snapshot' must use format: YYYYMMDDThhmmssZ (e.g. 20260514T142722Z).")
+        elif snapshot is not None:
+            raise ConfigError("'distrorepo.snapshot' is only valid when 'distrorepo.distro' is: debian-snapshot.")
+
+        arches.add(arch)
+
+    if len(arches) > 1:
+        raise ConfigError("'distrorepo.arch' must not have mixed architectures.")
 
     def validate_firejail(sandbox):
         required = {"name"}

@@ -103,7 +103,7 @@ def suggest_providing_packages(missing_libs, repos, quiet=True):
         repos = repos.get('base', []) + repos.get('ppas', [])
 
     for repo in repos:
-        distro = repo.get("distro", "").lower()
+        distro = str(repo.get("distro", "")).lower()
         release = repo.get("release")
         arch = repo.get("arch")
         components = repo.get("components", ["main"])
@@ -115,6 +115,14 @@ def suggest_providing_packages(missing_libs, repos, quiet=True):
 
         if distro == "debian":
             mirrors = ["https://ftp.debian.org/debian"]
+            subpath = "dists"
+        elif distro == "debian-snapshot":
+            snapshot = repo.get("snapshot")
+            if not snapshot:
+                if not quiet:
+                    print("⚠️  Skipping debian-snapshot repo without snapshot timestamp.")
+                continue
+            mirrors = [f"https://snapshot.debian.org/archive/debian/{snapshot}".rstrip("/")]
             subpath = "dists"
         elif distro == "ubuntu":
             mirrors = ["https://archive.ubuntu.com/ubuntu"]
@@ -139,7 +147,7 @@ def suggest_providing_packages(missing_libs, repos, quiet=True):
 
         for mirror in mirrors:
             for component in components:
-                if distro in ("debian", "devuan"):
+                if distro in ("debian", "debian-snapshot", "devuan"):
                     url = f"{mirror}/{subpath}/{release}/{component}/Contents-{arch}.gz"
                 else:
                     url = f"{mirror}/{subpath}/{release}/Contents-{arch}.gz"

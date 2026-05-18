@@ -105,6 +105,20 @@ def get_mirrors_for_distro(distro):
     }.get(distro, None)
 
 
+def get_mirrors_for_repo(repo, quiet=True):
+    distro = str(repo.get("distro", "")).lower()
+
+    if distro == "debian-snapshot":
+        snapshot = repo.get("snapshot")
+        if not snapshot:
+            if not quiet:
+                print_warning("Skipping debian-snapshot repo without 'snapshot' timestamp.", prefix="⚠️")
+            return None
+        return [f"https://snapshot.debian.org/archive/debian/{snapshot}".rstrip("/")]
+
+    return get_mirrors_for_distro(distro)
+
+
 def build_probe_tasks(repos, pkg_name, quiet):
     """
     Build probe tasks that randomly distribute mirrors to balance load,
@@ -115,7 +129,7 @@ def build_probe_tasks(repos, pkg_name, quiet):
         if "ppa" in repo:
             continue
 
-        distro = repo.get("distro", "").lower()
+        distro = str(repo.get("distro", "")).lower()
         release = repo.get("release")
         arch = repo.get("arch")
         components = repo.get("components", ["main"])
@@ -125,9 +139,9 @@ def build_probe_tasks(repos, pkg_name, quiet):
                 print_error(f"Error: Missing required repo keys for {pkg_name}: {repo}")
             continue
 
-        mirror_list = get_mirrors_for_distro(distro)
+        mirror_list = get_mirrors_for_repo(repo, quiet=quiet)
         if not mirror_list:
-            if not quiet:
+            if not quiet and distro != "debian-snapshot":
                 print_warning(f"Skipping unknown distro: {distro}", prefix="⚠️")
             continue
 
