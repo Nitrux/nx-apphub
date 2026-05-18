@@ -143,6 +143,19 @@ def validate_yaml_config(config):
     if integration_type not in ("cli", "gui", "wm"):
         raise ConfigError("'integration.type' must be one of: cli, gui, wm.")
 
+    integration_launcher = integration.get("launcher", "")
+    if integration_launcher is None:
+        integration_launcher = ""
+    if not isinstance(integration_launcher, str):
+        raise ConfigError("'integration.launcher' must be a string.")
+    integration_launcher = integration_launcher.strip()
+    if integration_launcher and "/" in integration_launcher:
+        raise ConfigError("'integration.launcher' must be a desktop file name, not a path.")
+    if integration_launcher and not integration_launcher.endswith(".desktop"):
+        raise ConfigError("'integration.launcher' must end with '.desktop'.")
+    integration["launcher"] = integration_launcher
+    config["integration"] = integration
+
     if integration_type == "wm" and sandbox_type != "none":
         raise ConfigError(
             "Window manager integration must not use a sandbox. "

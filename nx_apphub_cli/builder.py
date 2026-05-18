@@ -115,7 +115,7 @@ def copy_system_icon(app_name, app_dir, config, icon_path, quiet=True):
     )
 
 
-def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False):
+def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False, preferred_launcher=""):
     """Ensure the AppDir contains a valid .desktop file."""
 
     desktop_dir = app_dir / "usr/share/applications"
@@ -133,27 +133,40 @@ def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False):
 
     desktop_file_path = None
 
+    # -- Use explicit launcher when requested.
+
+    if preferred_launcher:
+        preferred_path = desktop_dir / preferred_launcher
+        if preferred_path.exists() and is_valid_desktop(preferred_path):
+            desktop_file_path = preferred_path
+        else:
+            raise BuildError(
+                f"Requested integration.launcher '{preferred_launcher}' was not found "
+                f"or is invalid in: {desktop_dir}"
+            )
+
     # -- Prefer exact match.
 
-    exact_match = desktop_dir / f"{app_name}.desktop"
-    if exact_match.exists() and is_valid_desktop(exact_match):
-        desktop_file_path = exact_match
-    else:
+    if not desktop_file_path:
+        exact_match = desktop_dir / f"{app_name}.desktop"
+        if exact_match.exists() and is_valid_desktop(exact_match):
+            desktop_file_path = exact_match
+        else:
 
-        # -- Look for partial matches.
+            # -- Look for partial matches.
 
-        for file in existing_desktops:
-            if app_name in file.name and is_valid_desktop(file):
-                desktop_file_path = file
-                break
-
-        # -- Fallback to any valid one.
-
-        if not desktop_file_path:
             for file in existing_desktops:
-                if is_valid_desktop(file):
+                if app_name in file.name and is_valid_desktop(file):
                     desktop_file_path = file
                     break
+
+            # -- Fallback to any valid one.
+
+            if not desktop_file_path:
+                for file in existing_desktops:
+                    if is_valid_desktop(file):
+                        desktop_file_path = file
+                        break
 
     if desktop_file_path:
 
@@ -204,7 +217,7 @@ Icon={app_name}
         desktop_file_path.write_text(desktop_content.strip() + "\n", encoding="utf-8")
 
 
-def prepare_window_manager_launcher(app_dir):
+def prepare_window_manager_launcher(app_dir, preferred_launcher=""):
     """Locate and prepare a session launcher (.desktop) for a window manager inside the AppDir.
 
     Prioritize Wayland session launchers over X11.
@@ -213,6 +226,48 @@ def prepare_window_manager_launcher(app_dir):
         app_dir / "usr/share/wayland-sessions",
         app_dir / "usr/share/xsessions"
     ]
+
+    if preferred_launcher:
+        for session_dir in session_dirs:
+            launcher_path = session_dir / preferred_launcher
+            if launcher_path.is_file():
+                target_path = app_dir / launcher_path.name
+                shutil.copy(launcher_path, target_path)
+
+                with target_path.open("r", encoding="utf-8") as f:
+                    lines = f.readlines()
+
+                updated_lines = []
+                icon_found = False
+                nodisplay_found = False
+
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped.startswith("Type="):
+                        updated_lines.append("Type=Application\n")
+                    elif stripped.startswith("Icon="):
+                        updated_lines.append("Icon=preferences-system-windows\n")
+                        icon_found = True
+                    elif stripped.startswith("NoDisplay="):
+                        updated_lines.append("NoDisplay=true\n")
+                        nodisplay_found = True
+                    else:
+                        updated_lines.append(line if line.endswith("\n") else line + "\n")
+
+                if not icon_found:
+                    updated_lines.append("Icon=preferences-system-windows\n")
+                if not nodisplay_found:
+                    updated_lines.append("NoDisplay=true\n")
+
+                with target_path.open("w", encoding="utf-8") as f:
+                    f.writelines(updated_lines)
+
+                return target_path
+
+        raise BuildError(
+            f"Requested integration.launcher '{preferred_launcher}' was not found in "
+            "usr/share/wayland-sessions or usr/share/xsessions."
+        )
 
     for session_dir in session_dirs:
         if session_dir.is_dir():
@@ -509,16 +564,35 @@ def prepare_appimage(config, install_mode=False, quiet=True, yaml_dir=None):
 
     integration = config.get("integration", {})
     integration_type = integration.get("type", "gui")
+    integration_launcher = integration.get("launcher", "")
+    if integration_launcher is None:
+        integration_launcher = ""
+    if not isinstance(integration_launcher, str):
+        cleanup_cache(app_name)
+        raise BuildError("'integration.launcher' must be a string.")
+    integration_launcher = integration_launcher.strip()
+    if integration_launcher and "/" in integration_launcher:
+        cleanup_cache(app_name)
+        raise BuildError("'integration.launcher' must be a desktop file name, not a path.")
+    if integration_launcher and not integration_launcher.endswith(".desktop"):
+        cleanup_cache(app_name)
+        raise BuildError("'integration.launcher' must end with '.desktop'.")
 
     hide_from_menu = integration_type == "cli"
 
     if integration_type == "wm":
-        wm_launcher = prepare_window_manager_launcher(app_dir)
+        wm_launcher = prepare_window_manager_launcher(app_dir, preferred_launcher=integration_launcher)
         if not wm_launcher:
             cleanup_cache(app_name)
             raise BuildError("No session launcher (.desktop) found in Wayland/X11 session directories.")
     else:
-        fix_desktop_entry(app_name, app_dir, new_binary_path, hide_from_menu=hide_from_menu)
+        fix_desktop_entry(
+            app_name,
+            app_dir,
+            new_binary_path,
+            hide_from_menu=hide_from_menu,
+            preferred_launcher=integration_launcher
+        )
     try:
         copy_system_icon(app_name, app_dir, config, config["buildinfo"].get("iconpath", None))
     except (FileNotFoundError, BuildError) as e:
