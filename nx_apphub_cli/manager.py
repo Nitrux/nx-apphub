@@ -169,12 +169,12 @@ def install(app_names):
                     print_error(f"Error removing old version {installed_version}: {e}")
                     continue
 
-        to_build.append((app_name, config))
+        to_build.append((app_name, config, app_yaml_path.parent))
 
     if printed_installed_msg:
         print_blank()
 
-    for index, (app_name, config) in enumerate(to_build):
+    for index, (app_name, config, yaml_dir) in enumerate(to_build):
         repos_config = config["buildinfo"].get("distrorepo", {})
         if not repos_config:
             print_error(f"Error: No 'distrorepo' specified for {app_name}. Skipping installation.")
@@ -193,7 +193,7 @@ def install(app_names):
         print_blank()
         print_info("Building AppBox...", prefix="🛠")
         print_blank()
-        prepare_appimage(config, install_mode=True)
+        prepare_appimage(config, install_mode=True, yaml_dir=yaml_dir)
 
         built_appbox = install_dir / f"{app_name}-{config['buildinfo'].get('version')}-{system_arch}.AppBox"
         if not built_appbox.exists():
