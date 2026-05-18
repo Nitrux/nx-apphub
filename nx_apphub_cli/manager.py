@@ -34,6 +34,24 @@ for directory in [repo_base_dir, repo_dir, backup_dir, install_dir]:
     directory.mkdir(parents=True, exist_ok=True)
 
 
+def ensure_build_marker(appbox_path: Path):
+    """Ensure a build marker exists for an installed AppBox."""
+    build_markers_dir = repo_base_dir / ".built"
+    build_markers_dir.mkdir(parents=True, exist_ok=True)
+
+    marker_file = build_markers_dir / appbox_path.stem
+    if marker_file.exists():
+        return
+
+    marker_content = f"""# This file is a build marker created by nx-apphub-cli
+# DO NOT manually create or modify this file
+# Doing so may cause integration issues and is not supported
+# AppBox: {appbox_path.name}
+"""
+    marker_file.write_text(marker_content)
+    print_info(f"Build marker created: {marker_file.name}", prefix="✓")
+
+
 def ensure_repo_updated():
     """Ensure the application repository is cloned and up-to-date."""
 
@@ -181,6 +199,8 @@ def install(app_names):
         if not built_appbox.exists():
             cleanup_cache(app_name)
             raise ManagerError(f"Failed to find the built {built_appbox} file.")
+
+        ensure_build_marker(built_appbox)
 
         print_success("Installation successful!")
         print_blank()

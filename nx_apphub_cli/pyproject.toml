@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nx-apphub-cli"
-version = "1.0.0"
+version = "1.1.0"
 description = "NX AppHub CLI — Lightweight command-line tool for managing and building applications in Nitrux."
 authors = [
     { name = "Uri Herrera", email = "uri_herrera@nxos.org" }
