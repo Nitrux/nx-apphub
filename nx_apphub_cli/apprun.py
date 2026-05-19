@@ -88,11 +88,20 @@ def generate_apprun(app_dir, config):
 
     if sandbox_type == "bwrap":
         bind_dirs = []
+        seen_bind_dirs = set()
+
+        def should_prepare_bind_source(source: str) -> bool:
+            """Only auto-create user-owned paths; skip system file/device paths."""
+            safe_prefixes = ("$HOME", "$XDG_RUNTIME_DIR")
+            return any(source == prefix or source.startswith(f"{prefix}/") for prefix in safe_prefixes)
+
         for bind_type in ["bind", "bind-try"]:
             for binding in sandbox.get(bind_type, []):
                 if isinstance(binding, str) and ":" in binding:
                     source = binding.split(":", 1)[0].replace("~", "$HOME")
-                    bind_dirs.append(source)
+                    if should_prepare_bind_source(source) and source not in seen_bind_dirs:
+                        bind_dirs.append(source)
+                        seen_bind_dirs.add(source)
 
         if bind_dirs:
             mkdir_commands = " ".join([f'"{d}"' for d in bind_dirs])

@@ -121,13 +121,13 @@ def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False, pref
     desktop_dir = app_dir / "usr/share/applications"
     existing_desktops = list(desktop_dir.glob("*.desktop")) if desktop_dir.exists() else []
 
-    def is_valid_desktop(path):
+    def is_valid_desktop(path, require_exec=True):
         try:
             with path.open(encoding="utf-8") as f:
                 lines = f.readlines()
                 has_name = any(line.strip().startswith("Name=") for line in lines)
                 has_exec = any(line.strip().startswith("Exec=") for line in lines)
-                return has_name and has_exec
+                return has_name and (has_exec if require_exec else True)
         except Exception:
             return False
 
@@ -137,7 +137,7 @@ def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False, pref
 
     if preferred_launcher:
         preferred_path = desktop_dir / preferred_launcher
-        if preferred_path.exists() and is_valid_desktop(preferred_path):
+        if preferred_path.exists() and is_valid_desktop(preferred_path, require_exec=False):
             desktop_file_path = preferred_path
         else:
             raise BuildError(
@@ -181,10 +181,12 @@ def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False, pref
 
         lines = desktop_file_path.read_text(encoding="utf-8").splitlines()
         updated_lines = []
+        found_exec = False
         found_nodisplay = False
 
         for line in lines:
             if line.startswith("Exec="):
+                found_exec = True
                 if f"/usr/bin/{binary_path.name}" not in line:
                     updated_lines.append(f"Exec=/usr/bin/{binary_path.name}")
                 else:
@@ -194,6 +196,9 @@ def fix_desktop_entry(app_name, app_dir, binary_path, hide_from_menu=False, pref
                 updated_lines.append(line)
             else:
                 updated_lines.append(line)
+
+        if not found_exec:
+            updated_lines.append(f"Exec=/usr/bin/{binary_path.name}")
 
         if hide_from_menu and not found_nodisplay:
             updated_lines.append("NoDisplay=true")
