@@ -47,6 +47,65 @@ def get_architecture():
     return arch_map.get(platform.machine(), "x86_64")
 
 
+def get_os_release_data():
+    """Return parsed os-release metadata as a dict."""
+    os_release_paths = (
+        Path("/etc/os-release"),
+        Path("/usr/lib/os-release"),
+    )
+
+    for os_release_path in os_release_paths:
+        if not os_release_path.is_file():
+            continue
+
+        data = {}
+        for line in os_release_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            value = value.strip().strip('"').strip("'")
+            data[key] = value
+
+        if data:
+            return data
+
+    return {}
+
+
+def get_host_nitrux_version():
+    """Return host Nitrux VERSION_ID, or None if not running on Nitrux."""
+    os_release = get_os_release_data()
+    distro_id = os_release.get("ID", "").strip().lower()
+
+    if distro_id != "nitrux":
+        return None
+
+    version_id = os_release.get("VERSION_ID", "").strip()
+    if version_id:
+        return version_id
+
+    lsb_release = Path("/etc/lsb-release")
+    if lsb_release.is_file():
+        lsb_data = {}
+        for line in lsb_release.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            lsb_data[key] = value.strip().strip('"').strip("'")
+
+        lsb_id = lsb_data.get("DISTRIB_ID", "").strip().lower()
+        lsb_release_version = lsb_data.get("DISTRIB_RELEASE", "").strip()
+
+        if lsb_id == "nitrux" and lsb_release_version:
+            return lsb_release_version
+
+    return None
+
+
 def cleanup_cache(package_name=None):
     """Remove the cache directory for a specific package or skip full cache cleanup."""
 

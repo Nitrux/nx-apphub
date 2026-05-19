@@ -21,6 +21,44 @@ cache_dir = Path.home() / ".cache/nx-apphub-cli"
 debian_snapshot_pattern = re.compile(r"^\d{8}T\d{6}Z$")
 
 
+def _promote_legacy_key(section, old_key, new_key):
+    """Promote legacy underscore-style keys to hyphen-style keys."""
+    if not isinstance(section, dict):
+        return
+
+    if old_key in section and new_key in section:
+        raise ConfigError(
+            f"YAML contains both '{old_key}' and '{new_key}'. "
+            f"Use only '{new_key}'."
+        )
+
+    if old_key in section and new_key not in section:
+        section[new_key] = section.pop(old_key)
+
+
+def normalize_yaml_key_aliases(config):
+    """Normalize legacy YAML key names to canonical hyphen-style keys."""
+    if not isinstance(config, dict):
+        return config
+
+    buildinfo = config.get("buildinfo")
+    if isinstance(buildinfo, dict):
+        _promote_legacy_key(buildinfo, "os_target", "os-target")
+
+    apprunconf = config.get("apprunconf")
+    if isinstance(apprunconf, dict):
+        _promote_legacy_key(apprunconf, "extra_rpaths", "extra-rpaths")
+        _promote_legacy_key(apprunconf, "prebuild_commands", "prebuild-commands")
+
+    sandbox = config.get("sandbox")
+    if isinstance(sandbox, dict):
+        _promote_legacy_key(sandbox, "aa_profile", "aa-profile")
+        _promote_legacy_key(sandbox, "bwrap_env", "bwrap-env")
+        _promote_legacy_key(sandbox, "bwrap_unset-env", "bwrap-unset-env")
+
+    return config
+
+
 # -- Load YAML configuration.
 
 def load_yaml_config(config_path):
@@ -39,7 +77,7 @@ def load_yaml_config(config_path):
         if not data:
             raise ConfigError(f"'{config_path}' is empty or invalid.")
 
-        return data
+        return normalize_yaml_key_aliases(data)
 
     except yaml.YAMLError as e:
         raise ConfigError(f"YAML parsing error in '{config_path}': {e}") from e
@@ -96,30 +134,35 @@ def validate_yaml_config(config):
                     f"Invalid type for '{section}.{key}'. "
                     f"Expected {expected_type.__name__}, got {type(value).__name__}."
                 )
+
+    os_target = config["buildinfo"].get("os-target")
+    if os_target is not None:
+        if not isinstance(os_target, str) or not os_target.strip():
+            raise ConfigError("'buildinfo.os-target' must be a non-empty string when defined.")
     
     # -- Validate apprunconf section.
 
     apprunconf = config.get("apprunconf", {})
 
-    extra = apprunconf.get("extra_rpaths")
+    extra = apprunconf.get("extra-rpaths")
     if extra is None:
-        apprunconf["extra_rpaths"] = []
+        apprunconf["extra-rpaths"] = []
     elif isinstance(extra, str):
-        apprunconf["extra_rpaths"] = [extra]
+        apprunconf["extra-rpaths"] = [extra]
     elif isinstance(extra, list):
         if not all(isinstance(x, str) for x in extra):
-            raise ConfigError("'apprunconf.extra_rpaths' list must contain only strings.")
+            raise ConfigError("'apprunconf.extra-rpaths' list must contain only strings.")
     else:
-        raise ConfigError("'apprunconf.extra_rpaths' must be a string or a list of strings.")
+        raise ConfigError("'apprunconf.extra-rpaths' must be a string or a list of strings.")
 
-    prebuild = apprunconf.get("prebuild_commands")
+    prebuild = apprunconf.get("prebuild-commands")
     if prebuild is None:
-        apprunconf["prebuild_commands"] = []
+        apprunconf["prebuild-commands"] = []
     elif isinstance(prebuild, list):
         if not all(isinstance(x, str) for x in prebuild):
-            raise ConfigError("'apprunconf.prebuild_commands' list must contain only strings.")
+            raise ConfigError("'apprunconf.prebuild-commands' list must contain only strings.")
     else:
-        raise ConfigError("'apprunconf.prebuild_commands' must be a list of strings.")
+        raise ConfigError("'apprunconf.prebuild-commands' must be a list of strings.")
 
     config["apprunconf"] = apprunconf
 
@@ -215,23 +258,23 @@ def validate_yaml_config(config):
 
     def validate_firejail(sandbox):
         required = {"name"}
-        optional = {"aa_profile"}
+        optional = {"aa-profile"}
 
         for key in required:
             if key not in sandbox:
                 raise ConfigError(f"Missing required 'sandbox.{key}' key for Firejail.")
 
-        if "aa_profile" in sandbox:
-            if not isinstance(sandbox["aa_profile"], str):
-                raise ConfigError("'sandbox.aa_profile' must be a string.")
+        if "aa-profile" in sandbox:
+            if not isinstance(sandbox["aa-profile"], str):
+                raise ConfigError("'sandbox.aa-profile' must be a string.")
 
-            profile = sandbox["aa_profile"]
+            profile = sandbox["aa-profile"]
             if profile != "none":
                 known_profiles = get_known_apparmor_profiles()
                 if profile not in known_profiles:
-                    print_warning(f"Warning: aa_profile '{profile}' does not match any profile in /etc/apparmor.d/")
+                    print_warning(f"Warning: aa-profile '{profile}' does not match any profile in /etc/apparmor.d/")
                     print_blank()
-                    print_warning("   👉 To fix this, create or rename the profile file or set 'aa_profile: none'.", prefix="")
+                    print_warning("   👉 To fix this, create or rename the profile file or set 'aa-profile: none'.", prefix="")
                     print_blank()
 
         for key in sandbox.keys():
@@ -254,17 +297,17 @@ def validate_yaml_config(config):
                 if not isinstance(sandbox[key], list):
                     raise ConfigError(f"'sandbox.{key}' must be a list.")
 
-                if key == "bwrap_env":
+                if key == "bwrap-env":
                     for item in sandbox[key]:
                         if not isinstance(item, dict) or len(item) != 1:
-                            raise ConfigError("Each item in 'sandbox.bwrap_env' must be a dictionary with a single key-value pair.")
+                            raise ConfigError("Each item in 'sandbox.bwrap-env' must be a dictionary with a single key-value pair.")
                         for k, v in item.items():
                             if not isinstance(k, str) or not isinstance(v, str):
-                                raise ConfigError("'sandbox.bwrap_env' entries must have string key-value pairs.")
+                                raise ConfigError("'sandbox.bwrap-env' entries must have string key-value pairs.")
 
-                elif key == "bwrap_unset-env":
+                elif key == "bwrap-unset-env":
                     if not all(isinstance(v, str) for v in sandbox[key]):
-                        raise ConfigError("'sandbox.bwrap_unset-env' entries must be strings.")
+                        raise ConfigError("'sandbox.bwrap-unset-env' entries must be strings.")
 
         for key in bwrap_key_value_flags:
             if key in sandbox and not isinstance(sandbox[key], (str, int)):

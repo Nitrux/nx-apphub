@@ -29,8 +29,8 @@ bwrap_boolean_flags = {
 }
 
 bwrap_list_flags = {
-    "bwrap_env": lambda _k, _v: [],
-    "bwrap_unset-env": lambda _k, _v: [],
+    "bwrap-env": lambda _k, _v: [],
+    "bwrap-unset-env": lambda _k, _v: [],
     "cap-drop": lambda _k, v: ["--cap-drop", v],
     "bind": lambda _k, v: ["--bind"] + v.split(":", 1),
     "ro-bind": lambda _k, v: ["--ro-bind"] + v.split(":", 1),
@@ -106,7 +106,7 @@ def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
         if not firejail_profile_path.exists():
             generate_firejail_profile(profile_name)
 
-        apparmor_profile = sandbox.get("aa_profile", "none")
+        apparmor_profile = sandbox.get("aa-profile", "none")
         cmd = f'"$APPDIR{exec_cmd}" "$@"'
         firejail_profile_str = str(firejail_profile_path)
 
@@ -130,12 +130,12 @@ def get_sandbox_exec_block(sandbox: dict, exec_cmd: str) -> str:
                     item = item.replace("~", "$HOME")
                 argv.extend(transform(key, item))
 
-        for item in sandbox.get("bwrap_env", []):
+        for item in sandbox.get("bwrap-env", []):
             if isinstance(item, dict):
                 for k, v in item.items():
                     argv.extend(["--setenv", k, v])
 
-        for item in sandbox.get("bwrap_unset-env", []):
+        for item in sandbox.get("bwrap-unset-env", []):
             argv.extend(["--unsetenv", item])
 
         for key, flag in bwrap_key_value_flags.items():

@@ -11,6 +11,7 @@ import requests
 from rich.console import Console
 
 from .exceptions import GeneratorError
+from .utils import get_host_nitrux_version
 
 console = Console()
 
@@ -216,22 +217,27 @@ def generate_yaml(package_name, distro, release, arch, components, integration_k
         "components": components
     }
 
+    buildinfo = {
+        "name": package_name,
+        "version": version,
+        "binarypath": "/usr/bin/REPLACE-ME",
+        "distrorepo": [distro_entry],
+        "deps": deps,
+        "runtime": runtime
+    }
+
+    if distro == "nitrux":
+        buildinfo["os-target"] = get_host_nitrux_version() or "REPLACE-ME"
+
     yaml_data = {
-        "buildinfo": {
-            "name": package_name,
-            "version": version,
-            "binarypath": "/usr/bin/REPLACE-ME",
-            "distrorepo": [distro_entry],
-            "deps": deps,
-            "runtime": runtime
-        },
+        "buildinfo": buildinfo,
         "apprunconf": {
             "exec": "/usr/bin/REPLACE-ME",
             "setpath": "/usr/bin",
             "setlibpath": "/usr/lib",
             "envvars": {},
-            "extra_rpaths" : [],
-            "prebuild_commands": []
+            "extra-rpaths" : [],
+            "prebuild-commands": []
         },
         "sandbox": {
             "type": "none"

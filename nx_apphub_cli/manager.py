@@ -10,7 +10,13 @@ from pathlib import Path
 
 from .builder import prepare_appimage
 from .config import load_yaml_config
-from .utils import cleanup_cache, concurrent_downloads, get_architecture
+from .utils import (
+    cleanup_cache,
+    concurrent_downloads,
+    get_architecture,
+    get_host_nitrux_version,
+    get_os_release_data,
+)
 from .exceptions import ManagerError, NxAppHubError
 from .console import (
     console, print_header, print_success, print_error,
@@ -118,6 +124,55 @@ def ensure_repo_updated():
             raise ManagerError(f"Unexpected failure during clone: {e}") from e
 
 
+def _get_os_target(config):
+    """Read and normalize buildinfo.os-target from YAML."""
+    target = config.get("buildinfo", {}).get("os-target")
+    if target is None:
+        return None
+    if not isinstance(target, str):
+        return ""
+    return target.strip()
+
+
+def _is_target_compatible(app_name, config):
+    """Check whether app target Nitrux version matches current host version."""
+    target = _get_os_target(config)
+
+    if target is None:
+        print_error(
+            f"Error: '{app_name}' is missing 'buildinfo.os-target'. "
+            "This curated app cannot be installed."
+        )
+        print_blank()
+        return False
+
+    if not target:
+        print_error(f"Error: '{app_name}' has an invalid 'buildinfo.os-target'.")
+        print_blank()
+        return False
+
+    host_version = get_host_nitrux_version()
+    if host_version is None:
+        os_release = get_os_release_data()
+        host_id = os_release.get("ID", "unknown")
+        print_error(
+            f"Error: Cannot verify Nitrux target for '{app_name}'. "
+            f"Host ID is '{host_id}', expected 'nitrux'."
+        )
+        print_blank()
+        return False
+
+    if host_version != target:
+        print_error(
+            f"Error: '{app_name}' targets Nitrux {target}, but host is Nitrux {host_version}. "
+            "Refusing install/update."
+        )
+        print_blank()
+        return False
+
+    return True
+
+
 def install(app_names):
     """Fetch YAML metadata, build bundle, and store metadata for multiple applications."""
 
@@ -139,6 +194,10 @@ def install(app_names):
             continue
 
         config = load_yaml_config(app_yaml_path)
+
+        if not _is_target_compatible(app_name, config):
+            continue
+
         app_version = config["buildinfo"].get("version", "unknown")
 
         if not app_version or app_version == "unknown":
@@ -367,6 +426,10 @@ def update(app_names):
             continue
 
         config = load_yaml_config(app_yaml_path)
+
+        if not _is_target_compatible(app_name, config):
+            continue
+
         latest_version = config["buildinfo"].get("version", "unknown")
 
         if not latest_version or latest_version == "unknown":

@@ -369,7 +369,7 @@ def patch_binary_rpath(binary_path, config):
             f"$ORIGIN/../../lib",
             f"$ORIGIN/../../lib64",
         ]
-        extras = config.get("apprunconf", {}).get("extra_rpaths", [])
+        extras = config.get("apprunconf", {}).get("extra-rpaths", [])
         if isinstance(extras, str):
             extras = [extras]
         elif isinstance(extras, tuple):
@@ -507,7 +507,7 @@ def prepare_appimage(config, install_mode=False, quiet=True, yaml_dir=None):
 
     # -- Run prebuild commands inside the AppDir.
 
-    prebuild_commands = config.get("apprunconf", {}).get("prebuild_commands", [])
+    prebuild_commands = config.get("apprunconf", {}).get("prebuild-commands", [])
     if prebuild_commands:
         print_info(f"Running prebuild commands for {app_name} inside {app_dir}...", prefix="🔧")
         print_blank()
