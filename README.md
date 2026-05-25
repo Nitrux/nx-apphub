@@ -84,8 +84,8 @@ To use NX AppHub CLI check the commands below.
 - `downgrade` → Downgrade one or more installed applications.
 - `search` → Search for specific applications.
 - `show` → Show installed applications.
-- `build` → Build an bundle from a local YAML file.
-  - `--appdir-lint` → Optionally debug missing shared libraries in an bundle.
+- `build` → Build a bundle from a local YAML file.
+  - `--appdir-lint` → Optionally debug missing shared libraries in a bundle.
 - `generate` → Generate YAML template from package metadata.
   - `--package` → Specify package name.
   - `--distro` → Choose the distribution from which to get metadata.
