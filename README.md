@@ -73,7 +73,6 @@ pipx uninstall nx-apphub-cli
 sudo pipx uninstall --global nx-apphub-cli
 ```
 
-
 # Usage
 
 To use NX AppHub CLI check the commands below.
