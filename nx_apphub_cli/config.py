@@ -247,7 +247,7 @@ def validate_yaml_config(config):
             if not isinstance(snapshot, str):
                 raise ConfigError("'distrorepo.snapshot' must be a string.")
             if not debian_snapshot_pattern.match(snapshot):
-                raise ConfigError("'distrorepo.snapshot' must use format: YYYYMMDDThhmmssZ (e.g. 20260514T142722Z).")
+                raise ConfigError("'distrorepo.snapshot' must use format: YYYYMMDDThhmmssZ (e.g. 20260725T202958Z).")
         elif snapshot is not None:
             raise ConfigError("'distrorepo.snapshot' is only valid when 'distrorepo.distro' is: debian-snapshot.")
 
