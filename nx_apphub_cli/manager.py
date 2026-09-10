@@ -511,11 +511,15 @@ def update(app_names):
                 print_error(f"Error: Could not restore backup for: {app_name}. Reason: {e}")
 
 
-def downgrade(app_names):
-    """Restore specific backups of multiple AppBoxes."""
+def downgrade(app_names, backup_name=None):
+    """Restore specific backups of one or more AppBoxes."""
 
     if isinstance(app_names, str):
         app_names = [app_names]
+
+    if backup_name and len(app_names) != 1:
+        print_error("Error: --backup can only be used with one application.")
+        return
 
     print_header(f"⏳ Downgrading: {', '.join(app_names)}")
 
@@ -530,23 +534,34 @@ def downgrade(app_names):
             print_blank()
             continue
 
-        print_info("Available backups:", prefix="📦")
-        print_blank()
-        for i, backup in enumerate(backups, 1):
-            print_message(f"    {i}. {backup.name}")
-
-        while True:
-            choice = input(f"\n🔢 Enter the number of the backup to restore for {app_name} (default = latest): ").strip()
-            if choice == "":
-                index = 0
-                break
-            if choice.isdigit() and 1 <= int(choice) <= len(backups):
-                index = int(choice) - 1
-                break
+        if backup_name:
+            if Path(backup_name).name != backup_name:
+                print_error("Error: Invalid backup archive name.")
+                print_blank()
+                continue
+            selected_backup = backup_dir / backup_name
+            if selected_backup not in backups:
+                print_error(f"Error: Backup not found for {app_name}: {backup_name}")
+                print_blank()
+                continue
+        else:
+            print_info("Available backups:", prefix="📦")
             print_blank()
-            print_error("    Invalid selection. Please enter a valid number.", prefix="⛔")
+            for i, backup in enumerate(backups, 1):
+                print_message(f"    {i}. {backup.name}")
 
-        selected_backup = backups[index]
+            while True:
+                choice = input(f"\n🔢 Enter the number of the backup to restore for {app_name} (default = latest): ").strip()
+                if choice == "":
+                    index = 0
+                    break
+                if choice.isdigit() and 1 <= int(choice) <= len(backups):
+                    index = int(choice) - 1
+                    break
+                print_blank()
+                print_error("    Invalid selection. Please enter a valid number.", prefix="⛔")
+
+            selected_backup = backups[index]
 
         print_blank()
         print_info(f"Restoring backup: {selected_backup.name}...", prefix="🔄")

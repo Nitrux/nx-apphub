@@ -54,6 +54,7 @@ def main():
 
         subparser_downgrade = subparsers.add_parser("downgrade", help="Downgrade one or more installed applications")
         subparser_downgrade.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to downgrade")
+        subparser_downgrade.add_argument("--backup", help="Restore a specific backup archive (single application only)")
 
         subparser_search = subparsers.add_parser("search", help="Search for specific applications")
         subparser_search.add_argument("app_names", nargs="+", type=str, help="Name(s) of application(s) to search for")
@@ -89,7 +90,7 @@ def main():
         elif args.command == "update":
             update(args.app_names)
         elif args.command == "downgrade":
-            downgrade(args.app_names)
+            downgrade(args.app_names, args.backup)
         elif args.command == "search":
             search(args.app_names)
         elif args.command == "show":

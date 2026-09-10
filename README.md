@@ -80,7 +80,7 @@ To use NX AppHub CLI check the commands below.
 - `install`→ Install one or more applications.
 - `remove` → Remove one or more installed applications.
 - `update` → Update one or more installed applications.
-- `downgrade` → Downgrade one or more installed applications.
+- `downgrade` → Restore an installed application from a backup; use `--backup` for non-interactive selection.
 - `search` → Search for specific applications.
 - `show` → Show installed applications.
 - `build` → Build a bundle from a local YAML file.
@@ -104,6 +104,8 @@ nx-apphub-cli remove fiery
 nx-apphub-cli update nano
 
 nx-apphub-cli downgrade mc
+
+nx-apphub-cli downgrade mc --backup mc-4.8.33-x86_64.tar
 
 nx-apphub-cli search nano mc fiery
 
