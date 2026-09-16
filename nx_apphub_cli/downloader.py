@@ -65,7 +65,7 @@ kde_neon_mirrors = [
 
 nitrux_mirrors = [
     "https://packagecloud.io/nitrux/mauikit/debian",
-    "https://packagecloud.io/nitrux/area51/debian",
+    "https://packagecloud.io/nitrux/external-apphub-debs/debian",
 ]
 
 zbkit_mirrors = [
