@@ -75,33 +75,45 @@ def ensure_repo_updated():
                 ["git", "-C", str(repo_dir), "status", "--porcelain"],
                 check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
-            untracked = [
-                line[3:]
-                for line in status_result.stdout.splitlines()
-                if line.startswith("??")
-            ]
-            if untracked:
-                print_warning(f"Warning: Repository has untracked files: {', '.join(untracked)}")
-                print_blank()
-                print_info("Discarding untracked files...", prefix="🔹")
-                print_blank()
+            status_lines = status_result.stdout.splitlines()
+            untracked = [line[3:] for line in status_lines if line.startswith("??")]
+            tracked_changes = [line for line in status_lines if not line.startswith("??")]
 
-                subprocess.run(
-                    ["git", "-C", str(repo_dir), "clean", "-fd"],
+            if tracked_changes:
+                print_warning("Warning: Repository has local tracked changes. Continuing with existing version.")
+                print_blank()
+            else:
+                if untracked:
+                    print_warning(f"Warning: Repository has untracked files: {', '.join(untracked)}")
+                    print_blank()
+                    print_info("Discarding untracked files...", prefix="🔹")
+                    print_blank()
+
+                    subprocess.run(
+                        ["git", "-C", str(repo_dir), "clean", "-fd"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        check=False
+                    )
+
+                fetch_result = subprocess.run(
+                    ["git", "-C", str(repo_dir), "fetch", "--depth=1", "origin"],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     check=False
                 )
-
-            pull_result = subprocess.run(
-                ["git", "-C", str(repo_dir), "pull"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                check=False
-            )
-            if pull_result.returncode == 0:
-                print_success("Applications repository updated.", prefix="🔄")
-            else:
-                print_warning("Warning: Failed to update repository. Continuing with existing version.")
-                print_blank()
+                if fetch_result.returncode != 0:
+                    print_warning("Warning: Failed to update repository. Continuing with existing version.")
+                    print_blank()
+                else:
+                    reset_result = subprocess.run(
+                        ["git", "-C", str(repo_dir), "reset", "--hard", "@{upstream}"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        check=False
+                    )
+                    if reset_result.returncode == 0:
+                        print_success("Applications repository updated.", prefix="🔄")
+                    else:
+                        print_warning("Warning: Failed to update repository. Continuing with existing version.")
+                        print_blank()
 
         except Exception as e:
             print_warning(f"Warning: Git update check failed ({e}). Continuing...")
